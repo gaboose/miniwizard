@@ -1,0 +1,144 @@
+<link
+  rel="preload"
+  href="/Wizard_s home_trimmed.ldtk"
+  as="fetch"
+  type="application/json"
+  crossorigin
+/>
+<link rel="preload" href="/atlas_trimmed.png" as="image" type="image/png" />
+<link rel="preload" href="/wizard.png" as="image" type="image/png" />
+
+<template id="wizard-canvas">
+  <canvas
+    id="c"
+    tabindex="0"
+    style="display: block; background: black; width: 100%; height: 100%"
+  ></canvas>
+</template>
+
+<script type="module">
+  import {
+    loadMap,
+    buildStaticCanvas,
+    getYSortTiles,
+    drawTile,
+    ySortDraw,
+  } from "./map.js";
+
+  import { loadImage, loadSprite, WIZARD_CONFIG } from "./sprite.js";
+  import {
+    createAnimationSystem,
+    createInputSystem,
+    createMovementSystem,
+  } from "./systems.js";
+
+  const SCALE = 2;
+
+  async function createGame(canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    const SPEED = 75.0;
+    const ANIM_FPS = 5;
+
+    const [map, atlas, sprite] = await Promise.all([
+      loadMap("Wizard_s home_trimmed.ldtk"),
+      loadImage("atlas_trimmed.png"),
+      loadSprite("wizard.png", WIZARD_CONFIG),
+    ]);
+
+    const staticCanvas = buildStaticCanvas(map.layers, atlas, SCALE);
+    const ySortItems = getYSortTiles(map.layers, map.tileHeights).map((t) => ({
+      sortY: t.sortY,
+      draw: () => drawTile(ctx, t, atlas, SCALE),
+    }));
+
+    const wizard = {
+      pos: { x: 200, y: 200 },
+      vel: { x: 0, y: 0 },
+      facing: "right",
+    };
+
+    const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
+    const inputSystem = createInputSystem(canvas, wizard, SPEED);
+    const movementSystem = createMovementSystem(wizard);
+
+    animationSystem.addCharacter(wizard, sprite);
+
+    let lastTimestamp = null;
+    function update(timestamp) {
+      if (lastTimestamp == null) lastTimestamp = timestamp;
+      let delta = (timestamp - lastTimestamp) * 0.001;
+
+      animationSystem.update(delta);
+      inputSystem.update();
+      movementSystem.update(delta);
+
+      lastTimestamp = timestamp;
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+      ctx.drawImage(staticCanvas, 0, 0);
+      ySortDraw([...animationSystem.ySortItems(), ...ySortItems]);
+    }
+
+    let rafId;
+    function loop(timestamp) {
+      update(timestamp);
+      draw();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    return {
+      start: loop,
+      stop: () => {
+        cancelAnimationFrame(rafId);
+        inputSystem.destroy();
+      },
+    };
+  }
+
+  customElements.define(
+    "wizard-canvas",
+    class extends HTMLElement {
+      constructor() {
+        super();
+        const template = document.getElementById("wizard-canvas");
+        this.attachShadow({ mode: "open" }).appendChild(
+          document.importNode(template.content, true),
+        );
+      }
+
+      connectedCallback() {
+        const canvas = this.shadowRoot.getElementById("c");
+
+        const observer = new ResizeObserver(() => {
+          const dpr = window.devicePixelRatio ?? 1;
+          canvas.width = Math.round(canvas.clientWidth * dpr);
+          canvas.height = Math.round(canvas.clientHeight * dpr);
+
+          // imageSmoothingEnabled resets when the canvas is resized
+          const ctx = canvas.getContext("2d");
+          ctx.imageSmoothingEnabled = false;
+          ctx.scale(dpr, dpr);
+        });
+
+        observer.observe(canvas);
+        this._observer = observer;
+
+        createGame(canvas).then((game) => {
+          this._game = game;
+          canvas.focus();
+          requestAnimationFrame(game.start);
+        });
+      }
+
+      disconnectedCallback() {
+        this._game?.stop();
+        this._observer?.disconnect();
+      }
+    },
+  );
+</script>
+
+<wizard-canvas></wizard-canvas>
