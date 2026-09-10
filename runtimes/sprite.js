@@ -9,13 +9,17 @@ export function loadImage(src) {
 
 export async function loadSprite(src, config) {
   const img = await loadImage(src);
+  return createSprite(img, config)
+}
+
+export function createSprite(atlas, config) {
   return {
     draw: (ctx, label, frameN, x, y, scale) => {
       const anim = config.animations[label];
       const frameRC = anim[frameN % anim.length];
       const frame = config.frames[frameRC[0]][frameRC[1]];
       ctx.drawImage(
-        img,
+        atlas,
         frame[4], frame[5], frame[0], frame[1],
         Math.round(x - frame[2]) * scale,
         Math.round(y - frame[3]) * scale,
@@ -24,6 +28,29 @@ export async function loadSprite(src, config) {
       );
     },
   };
+}
+
+function createConfigFromTileIds(atlas, tileIds, tileSize = 16) {  
+  const gridWidth = Math.floor(atlas.width / tileSize);
+  const frames = [];
+  const animation = [];
+
+  for (const id of tileIds) {
+    const col = id % gridWidth;
+    const row = Math.floor(id / gridWidth);
+    frames.push([tileSize, tileSize, 0, 0, col * tileSize, row * tileSize]);
+    animation.push([0, frames.length-1]);
+  }
+ 
+  return {
+    frames: [frames],
+    animations: { default: animation },
+  };
+}
+
+export function createSpriteFromTileIds(atlas, tileIds, tileSize = 16) {
+  const config = createConfigFromTileIds(atlas, tileIds, tileSize);
+  return createSprite(atlas, config);
 }
 
 export const WIZARD_CONFIG = {
@@ -44,13 +71,11 @@ export const WIZARD_CONFIG = {
       [32, 24, 8, 24, 0, 46],
       [32, 24, 8, 24, 32, 46],
       [32, 24, 8, 24, 64, 46],
-      [32, 24, 8, 24, 96, 46],
     ],
     [
       [32, 24, 24, 24, 0, 70],
       [32, 24, 24, 24, 32, 70],
       [32, 24, 24, 24, 64, 70],
-      [32, 24, 24, 24, 96, 70],
     ],
   ],
   animations: {
@@ -58,7 +83,7 @@ export const WIZARD_CONFIG = {
     idleL: [[0, 2], [0, 3]],
     walkR: [[1, 0], [1, 1]],
     walkL: [[1, 2], [1, 3]],
-    castR: [[0, 0], [2, 0], [2, 1], [2, 2], [2, 3]],
-    castL: [[0, 2], [3, 0], [3, 1], [3, 2], [3, 3]],
+    castR: [[0, 0], [2, 0], [2, 1], [2, 2], [2, 0]],
+    castL: [[0, 2], [3, 0], [3, 1], [3, 2], [3, 0]],
   },
 };
