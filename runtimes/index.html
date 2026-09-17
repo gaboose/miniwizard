@@ -49,6 +49,7 @@
   import { createInputSystem } from "./systems/input.js";
   import { createCollisionSystem } from "./systems/collision.js";
   import { createCameraSystem } from "./systems/camera.js";
+  import { createNetworkSystem } from "./systems/network.js";
 
   const SCALE = 1;
 
@@ -99,6 +100,7 @@
       x: map.playerStart.x + 2,
       y: map.playerStart.y - 30,
     });
+    const networkSystem = createNetworkSystem("testroom");
 
     animationSystem.addCharacter(wizard, sprite);
 
