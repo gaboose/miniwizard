@@ -34,7 +34,14 @@ export function createAnimationSystem(ctx, fps, scale) {
 
   return  {
     addCharacter: (entity, sprite) => {
-      animators.push(createCharacterAnimator(entity, sprite, fps))
+      const a = createCharacterAnimator(entity, sprite, fps)
+      animators.push(a)
+      return {
+        destroy() {
+          var i = animators.indexOf(a);
+          if (i >= 0) animators.splice(i, 1);
+        }
+      }
     },
     addSprite: (placement, sprite) => {
       animators.push(createSpriteAnimator(placement, sprite))

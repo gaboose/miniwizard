@@ -1,34 +1,17 @@
-<!-- <link
-  rel="preload"
-  href="/levels/level0/level.ldtk"
-  as="fetch"
-  type="application/json"
-  crossorigin
-/>
-<link
-  rel="preload"
-  href="/levels/level0/atlas.png"
-  as="image"
-  type="image/png"
-/>
-<link rel="preload" href="/wizard.png" as="image" type="image/png" /> -->
-<template id="wizard-canvas">
+const template = document.createElement("template");
+template.innerHTML = `
   <canvas
     id="c"
     tabindex="0"
     style="
       display: block;
-      background: black;
       width: 100%;
       height: 100%;
       image-rendering: pixelated;
     "
   ></canvas>
-</template>
-
-<script type="module">
-  const DIR_NAME = "/levels/level3";
-
+`;
+  
   import {
     loadMap,
     buildStaticCanvases,
@@ -49,20 +32,21 @@
   import { createInputSystem } from "./systems/input.js";
   import { createCollisionSystem } from "./systems/collision.js";
   import { createCameraSystem } from "./systems/camera.js";
-  import { createNetworkSystem } from "./systems/network.js";
 
   const SCALE = 1;
 
-  async function createGame(canvas) {
+  async function createGame(canvas, options = {}) {
+    const { level, networkRoom } = options;
+
     const SPEED = 75.0;
     const ANIM_FPS = 5;
     const finalCtx = canvas.getContext("2d");
     finalCtx.imageSmoothingEnabled = false;
 
     const [map, atlas, sprite] = await Promise.all([
-      loadMap(DIR_NAME + "/level.ldtk"),
-      loadImage(DIR_NAME + "/atlas.png"),
-      loadSprite("wizard.png", WIZARD_CONFIG),
+      loadMap(level),
+      loadImage("./atlas.png"),
+      loadSprite(new URL("./wizard.png", import.meta.url), WIZARD_CONFIG),
     ]);
 
     const animatedTileIds = new Set(
@@ -100,7 +84,31 @@
       x: map.playerStart.x + 2,
       y: map.playerStart.y - 30,
     });
-    const networkSystem = createNetworkSystem("testroom");
+
+    var networkSystem;
+    var wizardCh;
+    async function asyncSetup() {
+        if (networkRoom) {
+            const { createNetworkSystem, createRemoteCharacterEntity } = await import(new URL(`./systems/network.js?update=${Date.now()}`, import.meta.url));
+            networkSystem = createNetworkSystem(networkRoom, {
+                onNewOwnedChannel(ch,) {
+                    console.log("remote channel created", ch.id, ch);
+                    createRemoteCharacterEntity(
+                        ch, (state) => {return animationSystem.addCharacter(state, sprite)}
+                    )
+                },
+            });
+
+            wizardCh = networkSystem.ownedChannel({
+                id: "p",
+                m: {
+                    x: wizard.pos.x,
+                    y: wizard.pos.y,
+                },
+            });
+        }
+    }
+    asyncSetup()
 
     animationSystem.addCharacter(wizard, sprite);
 
@@ -123,6 +131,11 @@
       inputSystem.update();
       collisionSystem.update(delta);
       cameraSystem.update(delta);
+
+      if (networkSystem) {
+          networkSystem.update();
+          wizardCh.send({ x: wizard.pos.x, y: wizard.pos.y });
+      }
 
       lastTimestamp = timestamp;
     }
@@ -160,16 +173,18 @@
     class extends HTMLElement {
       constructor() {
         super();
-        const template = document.getElementById("wizard-canvas");
         this.attachShadow({ mode: "open" }).appendChild(
-          document.importNode(template.content, true),
+          template.content.cloneNode(true),
         );
       }
 
       connectedCallback() {
         const canvas = this.shadowRoot.getElementById("c");
 
-        createGame(canvas).then((game) => {
+        const level = this.dataset.level; 
+        const networkRoom = this.dataset.networkRoom;
+
+        createGame(canvas, { level, networkRoom }).then((game) => {
           this._game = game;
           canvas.focus();
 
@@ -196,6 +211,3 @@
       }
     },
   );
-</script>
-
-<wizard-canvas></wizard-canvas>

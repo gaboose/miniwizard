@@ -1,0 +1,25 @@
+<!doctype html>
+<link
+  rel="preload"
+  href="ldtk.json"
+  as="fetch"
+  type="application/json"
+  crossorigin
+/>
+<link rel="preload" href="atlas.png" as="image" type="image/png" />
+<link
+  rel="preload"
+  href="../../runtime/1/wizard.png"
+  as="image"
+  type="image/png"
+/>
+<style>
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    background-color: #008df0;
+  }
+</style>
+<script type="module" src="../../runtime/1/main.js"></script>
+<wizard-canvas data-level="ldtk.json"></wizard-canvas>
