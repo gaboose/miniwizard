@@ -165,6 +165,7 @@ template.innerHTML = `
         cancelAnimationFrame(rafId);
         inputSystem.destroy();
       },
+      draw,
     };
   }
 
@@ -196,6 +197,8 @@ template.innerHTML = `
             // imageSmoothingEnabled resets when the canvas is resized
             const ctx = canvas.getContext("2d");
             ctx.imageSmoothingEnabled = false;
+
+            game.draw()
           });
 
           observer.observe(canvas);
