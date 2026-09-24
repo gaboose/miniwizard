@@ -1,18 +1,4 @@
 <!doctype html>
-<link
-  rel="preload"
-  href="ldtk.json"
-  as="fetch"
-  type="application/json"
-  crossorigin
-/>
-<link rel="preload" href="atlas.png" as="image" type="image/png" />
-<link
-  rel="preload"
-  href="../../runtime/1/wizard.png"
-  as="image"
-  type="image/png"
-/>
 <style>
   html,
   body {
@@ -21,5 +7,15 @@
     background-color: #008df0;
   }
 </style>
-<script type="module" src="../../runtime/1/main.js"></script>
-<wizard-canvas data-level="ldtk.json"></wizard-canvas>
+<img id="atlas" src="./atlas.png" alt="" hidden />
+<img id="wizard" src="../../runtime/1/wizard.png" alt="" hidden />
+<wizard-canvas></wizard-canvas>
+<script type="module">
+  import "../../runtime/1/main.js";
+  import level from "./ldtk.json" with { type: "json" };
+  document.querySelector("wizard-canvas").init({
+    level,
+    atlas: document.getElementById("atlas"),
+    wizard: document.getElementById("wizard"),
+  });
+</script>

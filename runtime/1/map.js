@@ -1,7 +1,7 @@
 const TILE_SIZE = 16;
 
-export async function loadMap(src) {
-  const data = await fetch(src).then((r) => r.json());
+// `data` is an already-parsed LDtk JSON project.
+export async function loadMap(data) {
   const level = data.levels[0];
 
   // Build tileId → height (0, 1, 2) from enumTags on each tileset.
@@ -12,7 +12,6 @@ export async function loadMap(src) {
     solid: new Set(),
     bottom: new Set(),
   };
-  const collisionTileIds = new Set();
   for (const tileset of data.defs.tilesets) {
     for (const tag of tileset.enumTags) {
       if (tag.enumValueId === "Collision") {

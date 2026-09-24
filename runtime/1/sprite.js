@@ -1,15 +1,16 @@
-export function loadImage(src) {
+/**
+ * @param {HTMLImageElement} img
+ */
+export function loadImage(img) {
+  if (img.complete && img.naturalWidth) return Promise.resolve(img);
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
+    img.addEventListener("load", () => resolve(img), { once: true });
+    img.addEventListener("error", reject, { once: true });
   });
 }
 
-export async function loadSprite(src, config) {
-  const img = await loadImage(src);
-  return createSprite(img, config)
+export async function loadSprite(img, config) {
+  return createSprite(await loadImage(img), config)
 }
 
 export function createSprite(atlas, config) {

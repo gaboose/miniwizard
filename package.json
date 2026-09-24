@@ -1,0 +1,13 @@
+{
+  "name": "wizard",
+  "scripts": {
+    "dev": "vite",
+    "build": "./build.sh"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "private": true,
+  "type": "module"
+}

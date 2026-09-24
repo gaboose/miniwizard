@@ -34,9 +34,10 @@ template.innerHTML = `
   import { createCameraSystem } from "./systems/camera.js";
 
   const SCALE = 1;
+  const RUNTIME_VERSION = 1;
 
   async function createGame(canvas, options = {}) {
-    const { level, networkRoom } = options;
+    const { level, atlas: atlasImg, wizard: wizardImg, networkRoom, runtimeBase } = options;
 
     const SPEED = 75.0;
     const ANIM_FPS = 5;
@@ -45,8 +46,8 @@ template.innerHTML = `
 
     const [map, atlas, sprite] = await Promise.all([
       loadMap(level),
-      loadImage("./atlas.png"),
-      loadSprite(new URL("./wizard.png", import.meta.url), WIZARD_CONFIG),
+      loadImage(atlasImg),
+      loadSprite(wizardImg, WIZARD_CONFIG),
     ]);
 
     const animatedTileIds = new Set(
@@ -89,7 +90,12 @@ template.innerHTML = `
     var wizardCh;
     async function asyncSetup() {
         if (networkRoom) {
-            const { createNetworkSystem, createRemoteCharacterEntity } = await import(new URL(`./systems/network.js?update=${Date.now()}`, import.meta.url));
+            // network.js stays a separate file (it spawns a worker relative to
+            // itself), so it's resolved against runtimeBase, not import.meta.url,
+            // which points at the page once main.js is inlined.
+            const networkUrl = new URL("systems/network.js", runtimeBase);
+            networkUrl.searchParams.set("update", Date.now());
+            const { createNetworkSystem, createRemoteCharacterEntity } = await import(networkUrl.href);
             networkSystem = createNetworkSystem(networkRoom, {
                 onNewOwnedChannel(ch,) {
                     console.log("remote channel created", ch.id, ch);
@@ -179,13 +185,33 @@ template.innerHTML = `
         );
       }
 
+      // Called by the page with the parsed json and img assets.
+      init({ level, atlas, wizard }) {
+        this._assets = { level, atlas, wizard };
+        if (this.isConnected) this._start();
+      }
+
       connectedCallback() {
+        if (this._assets) this._start();
+      }
+
+      disconnectedCallback() {
+        this._game?.stop();
+        this._observer?.disconnect();
+        this._game = this._observer = this._starting = null;
+      }
+
+      _start() {
+        if (this._starting) return;
         const canvas = this.shadowRoot.getElementById("c");
-
-        const level = this.dataset.level; 
         const networkRoom = this.dataset.networkRoom;
-
-        createGame(canvas, { level, networkRoom }).then((game) => {
+        const starting = (this._starting = createGame(canvas, {
+          ...this._assets,
+          networkRoom,
+          runtimeBase: new URL(`../../runtime/${RUNTIME_VERSION}/`, document.baseURI),
+        }));
+        starting.then((game) => {
+          if (this._starting !== starting) return;
           this._game = game;
           canvas.focus();
 
@@ -206,11 +232,6 @@ template.innerHTML = `
 
           requestAnimationFrame(game.start);
         });
-      }
-
-      disconnectedCallback() {
-        this._game?.stop();
-        this._observer?.disconnect();
       }
     },
   );
