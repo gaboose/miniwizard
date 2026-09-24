@@ -34,10 +34,9 @@ template.innerHTML = `
   import { createCameraSystem } from "./systems/camera.js";
 
   const SCALE = 1;
-  const RUNTIME_VERSION = 1;
 
   async function createGame(canvas, options = {}) {
-    const { level, atlas: atlasImg, wizard: wizardImg, networkRoom, runtimeBase } = options;
+    const { level, atlas: atlasImg, wizard: wizardImg, networkRoom } = options;
 
     const SPEED = 75.0;
     const ANIM_FPS = 5;
@@ -90,12 +89,7 @@ template.innerHTML = `
     var wizardCh;
     async function asyncSetup() {
         if (networkRoom) {
-            // network.js stays a separate file (it spawns a worker relative to
-            // itself), so it's resolved against runtimeBase, not import.meta.url,
-            // which points at the page once main.js is inlined.
-            const networkUrl = new URL("systems/network.js", runtimeBase);
-            networkUrl.searchParams.set("update", Date.now());
-            const { createNetworkSystem, createRemoteCharacterEntity } = await import(networkUrl.href);
+            const { createNetworkSystem, createRemoteCharacterEntity } = await import("./systems/network.js");
             networkSystem = createNetworkSystem(networkRoom, {
                 onNewOwnedChannel(ch,) {
                     console.log("remote channel created", ch.id, ch);
@@ -208,7 +202,6 @@ template.innerHTML = `
         const starting = (this._starting = createGame(canvas, {
           ...this._assets,
           networkRoom,
-          runtimeBase: new URL(`../../runtime/${RUNTIME_VERSION}/`, document.baseURI),
         }));
         starting.then((game) => {
           if (this._starting !== starting) return;

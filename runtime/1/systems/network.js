@@ -1,9 +1,7 @@
 export function createNetworkSystem(roomName, { onNewOwnedChannel } = {}) {
     // Classic worker (not a module): the worker pulls in Go's wasm_exec.js
     // via importScripts, which module workers can't do.
-    // console.log("hello", import.meta.url);
     const worker = new Worker(new URL("./network.worker.js", import.meta.url));
-    // const worker = new Worker(new URL("systems/network.worker.js", document.baseURI));
  
     // ---------- owned channels (page-side handles) ----------
     // The worker holds the authoritative {id, header, lastMessage} so it can

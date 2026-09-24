@@ -8,10 +8,35 @@ import ldtkbuddy from "./vite-plugin-ldtkbuddy.js";
 const page = process.env.PAGE;
 
 export default defineConfig({
-  plugins: [ldtkbuddy(), viteSingleFile({ removeViteModuleLoader: true })],
+  base: '/',
+  plugins: [ldtkbuddy(), viteSingleFile({
+    useRecommendedBuildConfig: false,
+    removeViteModuleLoader: true,
+    inlinePattern: [`${page}/index-*.js`],
+  })],
   build: {
     outDir: "dist",
     emptyOutDir: false,
-    rollupOptions: page ? { input: path.resolve(page, "index.html") } : undefined,
+    assetsInlineLimit: () => true,
+    cssCodeSplit: false,
+    chunkSizeWarningLimit: 100000000,
+    rollupOptions: page ? {
+      input: path.resolve(page, "index.html"),
+      output: {
+        codeSplitting: true,
+        entryFileNames: `${page}/[name]-[hash].js`,
+        chunkFileNames: '[name]-[hash].js',
+        assetFileNames: '[name]-[hash].[ext]',
+      }
+    } : undefined,
+  },
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: '[name]-[hash].js',
+        chunkFileNames: '[name]-[hash].js',
+      }
+    }
   },
 });
