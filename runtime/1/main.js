@@ -81,7 +81,7 @@ template.innerHTML = `
       vel: { x: 0, y: 0 },
       facing: "right",
       hitbox: { x: -8, y: -3, w: 16, h: 3 },
-      speed: SPEED,
+      speed: SPEED
     };
 
     const collisionGrid = buildCollisionGrid(map.layers, map.collision);

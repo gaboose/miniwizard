@@ -1,15 +1,15 @@
 export function createCharacterAnimator(entity, sprite) {
-  const getLabel = (vx, vy, facing) => {
-    const motion = vx !== 0 || vy !== 0 ? "walk" : "idle";
-    return motion + (facing === "right" ? "R" : "L");
+  const getLabel = () => {
+    const dir = entity.movementSource.direction;
+    const motion = dir.x != 0 || dir.y != 0 ? "walk" : "idle";
+    return motion + (entity.facing === "right" ? "R" : "L");
   }
 
   return {
     ySortItem: (ctx, scale, frame) => {
-      const label = getLabel(entity.vel.x, entity.vel.y, entity.facing);
       return {
         sortY: entity.pos.y,
-        draw: () => sprite.draw(ctx, label, frame, entity.pos.x, entity.pos.y, scale),
+        draw: () => sprite.draw(ctx,  getLabel(), frame, entity.pos.x, entity.pos.y, scale),
       };
     }
   };
