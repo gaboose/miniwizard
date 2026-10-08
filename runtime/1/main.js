@@ -32,6 +32,7 @@ template.innerHTML = `
   import { createInputSystem } from "./systems/input.js";
   import { createCollisionSystem } from "./systems/collision.js";
   import { createCameraSystem } from "./systems/camera.js";
+  import { createDebugSystem } from "./systems/debug.js";
   import {
     combineMovementSources,
   } from "./systems/combine.js";
@@ -79,7 +80,7 @@ template.innerHTML = `
       pos: map.playerStart,
       vel: { x: 0, y: 0 },
       facing: "right",
-      hitbox: { x: -8, y: -3, w: 16, h: 6 },
+      hitbox: { x: -8, y: -3, w: 16, h: 3 },
       speed: SPEED,
     };
 
@@ -88,6 +89,10 @@ template.innerHTML = `
     const inputSystem = createInputSystem(canvas);
     const collisionSystem = createCollisionSystem(wizard, collisionGrid);
     const cameraSystem = createCameraSystem({worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes});
+    const debugSystem = createDebugSystem({
+      canvas: pixelCanvas,
+      // collision: collisionGrid
+    });
 
     wizard.movementSource = combineMovementSources({
       input: inputSystem.newMovementSource(),
@@ -160,6 +165,7 @@ template.innerHTML = `
         ctx.fillRect(Math.round(tpos.x)-1, Math.round(tpos.y)-1, 3, 3);
       }
 
+      debugSystem.draw();
       cameraSystem.draw();
     }
 
