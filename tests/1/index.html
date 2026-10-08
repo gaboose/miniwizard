@@ -12,9 +12,9 @@
 <wizard-canvas></wizard-canvas>
 <script type="module">
   import "../../runtime/1/main.js";
-  import level from "./ldtk.json" with { type: "json" };
+  import ldtkData from "./ldtk.json" with { type: "json" };
   document.querySelector("wizard-canvas").init({
-    level,
+    ldtkData,
     atlas: document.getElementById("atlas"),
     wizard: document.getElementById("wizard"),
   });

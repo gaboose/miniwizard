@@ -1,35 +1,39 @@
 const TILE_SIZE = 16;
 
 // `data` is an already-parsed LDtk JSON project.
-export async function loadMap(data) {
-  const level = data.levels[0];
+export async function loadMap(data, levelName) {
+  const level = levelName === undefined ? data.levels[0] : data.levels.find((l) => l.identifier === levelName)
 
   // Build tileId → height (0, 1, 2) from enumTags on each tileset.
   // Height h means the tile's visual top is h tiles above its ground-plane base,
   // so its base row is at px[1] + 16 * (h + 1).
   const tileHeights = new Map();
-  const collision = {
-    solid: new Set(),
-    bottom: new Set(),
-  };
+  var collision = new Map();
   for (const tileset of data.defs.tilesets) {
+    collision = new Map([...collision, ...parseCollisionRects(tileset)]);
     for (const tag of tileset.enumTags) {
-      if (tag.enumValueId === "Collision") {
-        for (const id of tag.tileIds) collision.solid.add(id);
-      } else if (tag.enumValueId === "CollisionBottom") {
-        for (const id of tag.tileIds) collision.bottom.add(id);
-      } else {
         const h = tag.enumValueId === "Height2" ? 2 : tag.enumValueId === "Height1" ? 1 : 0;
         for (const id of tag.tileIds) tileHeights.set(id, h);
-      }
     }
   }
 
-  const playerEntity = data.levels
-  .flatMap(level => level.layerInstances)
+  const playerEntity = level.layerInstances
   .flatMap(layer => layer.entityInstances)
   .find(e => e.__identifier === "Player");
   const playerStart = {x: playerEntity.px[0], y: playerEntity.px[1]};
+
+  const cameraBoxes = (level.layerInstances ?? [])
+    .flatMap((layer) => layer.entityInstances ?? [])
+    .filter((e) => e.__identifier === "CameraArea")
+    .map((e) => {
+      const [pivotX, pivotY] = e.__pivot ?? [0, 0];
+      return {
+        x: e.px[0] - pivotX * e.width,
+        y: e.px[1] - pivotY * e.height,
+        width: e.width,
+        height: e.height,
+      };
+    });
 
   const animatedTiles = {}
   for (const tileset of data?.defs?.tilesets ?? []) {
@@ -66,35 +70,83 @@ export async function loadMap(data) {
     tileHeights,
     collision,
     playerStart,
+    cameraBoxes,
     animatedTiles,
   };
 }
 
-export function buildCollisionGrid(layers, collisionTileIds) {
-  const ref = layers.find((l) => l.__cWid > 0);
+// Parse "Collision x,y WxH x,y WxH ..." entries from a tileset's customData.
+function parseCollisionRects(tileset) {
+  const map = new Map(); // tileId -> [{ x, y, w, h }] in tile-local px
+  for (const { tileId, data } of tileset.customData ?? []) {
+    for (const line of data.split("\n")) {
+      const parts = line.trim().split(/\s+/);
+      if (parts[0] !== "Collision") continue;
+      const rects = [];
+      for (let i = 1; i + 1 < parts.length; i += 2) {
+        const [x, y] = parts[i].split(",").map(Number);
+        const [w, h] = parts[i + 1].split("x").map(Number);
+        rects.push({ x, y, w, h });
+      }
+      if (rects.length) map.set(tileId, rects);
+    }
+  }
+  for (const tag of tileset.enumTags) {
+    if (tag.enumValueId === "Collision") {
+      for (const id of tag.tileIds) {
+        let rects = map.get(id) ?? [];
+        rects.push({x:0, y:0, w:16, h:16});
+        map.set(id, rects);
+      }
+    }
+  }
+  return map;
+}
+
+const FULL_TILE = [{ x: 0, y: 0, w: 16, h: 16 }];
+
+export function buildCollisionGrid(layers, collisionRects = new Map()) {
+  const CELL = 16;
+  const ref = layers.find((l) => l.__gridSize === CELL);
   const width = ref.__cWid;
   const height = ref.__cHei;
-  const solid = new Uint8Array(width * height);
-  const bottom = new Uint8Array(width * height);
+  const cells = new Array(width * height).fill(null); // index -> [{ x, y, w, h }] in level px
+
+  const addRect = (r) => {
+    const x0 = Math.max(0, Math.floor(r.x / CELL));
+    const y0 = Math.max(0, Math.floor(r.y / CELL));
+    const x1 = Math.min(width - 1, Math.floor((r.x + r.w - 1) / CELL));
+    const y1 = Math.min(height - 1, Math.floor((r.y + r.h - 1) / CELL));
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        const i = gy * width + gx;
+        (cells[i] ??= []).push(r);
+      }
+    }
+  };
 
   const tileLayerIds = ["BackgroundTiles", "YSort", "BackgroundAuto"];
   for (const id of tileLayerIds) {
     const layer = layers.find((l) => l.__identifier === id);
     if (!layer) continue;
     for (const tile of [...(layer.gridTiles ?? []), ...(layer.autoLayerTiles ?? [])]) {
-      if (collisionTileIds.solid.has(tile.t)) {
-        const gx = tile.px[0] / 16;
-        const gy = tile.px[1] / 16;
-        solid[gy * width + gx] = 1;
-      }
-      if (collisionTileIds.bottom.has(tile.t)) {
-        const gx = tile.px[0] / 16;
-        const gy = tile.px[1] / 16;
-        bottom[gy * width + gx] = 1;
+      // customData rects take priority over the full-tile Collision tag
+      const local = collisionRects.get(tile.t) ?? null;
+      if (!local) continue;
+      const flipX = tile.f & 1;
+      const flipY = tile.f & 2;
+      for (const r of local) {
+        addRect({
+          x: tile.px[0] + (flipX ? CELL - r.x - r.w : r.x),
+          y: tile.px[1] + (flipY ? CELL - r.y - r.h : r.y),
+          w: r.w,
+          h: r.h,
+        });
       }
     }
   }
-  return { cellSize: 16, width, height, solid, bottom };
+
+  return { cellSize: CELL, width, height, cells };
 }
 
 function parseAnimationOffsets(data) {
@@ -165,12 +217,14 @@ export function buildStaticCanvases(layers, atlas, scale, ignoreTileIds = new Se
 }
 
 export function getYSortTiles(layers, tileHeights) {
-  const layer = layers.find((l) => l.__identifier === "YSort");
-  if (!layer) return [];
-  return layer.gridTiles.map((t) => {
-    const h = tileHeights.get(t.t) ?? 0;
-    return { ...t, sortY: t.px[1] + 16 * (h + 1) };
-  });
+  return layers.flatMap((layer) =>
+    layer.gridTiles
+      .filter((t) => tileHeights.has(t.t))
+      .map((t) => {
+        const h = tileHeights.get(t.t);
+        return { ...t, sortY: t.px[1] + 16 * (h) };
+      })
+  );
 }
 
 // Sort and draw a mixed list of { sortY, draw } items.

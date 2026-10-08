@@ -1,40 +1,40 @@
 export function createCollisionSystem(entity, grid) {
   const { cellSize, width, height, solid, bottom } = grid;
 
-  function isSolid(gx, gy) {
-    if (gx < 0 || gy < 0 || gx >= width || gy >= height) return true;
-    return solid[gy * width + gx] !== 0;
-  }
-
-  function isBottom(gx, gy) {
-    return bottom[gy * width + gx] !== 0;
-  }
-
-  function isBlocked(t, r, b, l) {
-    for (let gx = Math.floor(l / cellSize); gx * cellSize < r; gx++) {
-      for (let gy = Math.floor(t / cellSize); gy * cellSize < b; gy++) {
-        if (isSolid(gx, gy)) return {
-          t: Math.max(t, gy*cellSize),
-          r: Math.min(r, (gx+1)*cellSize),
-          b: Math.min(b, (gy+1)*cellSize),
-          l: Math.max(l, gx*cellSize)
-        };
-        if (isBottom(gx, gy) && (gy + 1) * cellSize < b) return {
-          t: Math.max(t, (gy+1)*cellSize),
-          r: Math.min(r, (gx+1)*cellSize),
-          b: Math.min(b, (gy+1)*cellSize),
-          l: Math.max(l, gx*cellSize)
-        };
+function overlapsSolid(grid, box) {
+  const { cellSize: C, width, height, cells } = grid;
+  const x0 = Math.max(0, Math.floor(box.l / C));
+  const y0 = Math.max(0, Math.floor(box.t / C));
+  const x1 = Math.min(width - 1, Math.floor((box.r - 1) / C));
+  const y1 = Math.min(height - 1, Math.floor((box.b - 1) / C));
+  for (let gy = y0; gy <= y1; gy++) {
+    for (let gx = x0; gx <= x1; gx++) {
+      for (const s of cells[gy * width + gx] ?? []) {
+        const l = Math.max(box.l, s.x);
+        const t = Math.max(box.t, s.y);
+        const r = Math.min(box.r, s.x + s.w);
+        const b = Math.min(box.b, s.y + s.h);
+        if (r > l && b > t) return { l, t, r, b };
       }
     }
-    return false;
   }
+  return null;
+}
 
   return {
     update(delta) {
-      const { pos, vel, hitbox: hb } = entity;
-      const dx = vel.x * delta;
-      const dy = vel.y * delta;
+      const { pos, movementSource, hitbox: hb, speed } = entity;
+      const dir = movementSource.direction;
+      const mag = Math.hypot(dir.x, dir.y);
+      if (mag > 1.0) {
+        const f = 1.0 / mag;
+        dir.x *= f;
+        dir.y *= f;
+      }
+      if (dir.x > 0) entity.facing = "right"
+      else if (dir.x < 0) entity.facing = "left"
+      const dx = dir.x * speed * delta;
+      const dy = dir.y * speed * delta;
 
       // Sub-step so neither axis advances more than one cell at a time —
       // prevents tunneling on tab-return / frame-drop / speed boosts.
@@ -50,7 +50,7 @@ export function createCollisionSystem(entity, grid) {
         let l = pos.x + hb.x;
         let r = l + hb.w;
 
-        let intersection = isBlocked(t, r, b, l)
+        let intersection = overlapsSolid(grid, {t, b, l, r});
         if (intersection) {
           if (sx > 0) pos.x = intersection.l - hb.x - hb.w;
           if (sx < 0) pos.x = intersection.r - hb.x;
@@ -62,7 +62,7 @@ export function createCollisionSystem(entity, grid) {
         l = pos.x + hb.x;
         r = l + hb.w;
         
-        intersection = isBlocked(t, r, b, l)
+        intersection = overlapsSolid(grid, {t, b, l, r});
         if (intersection) {
           if (sy > 0) pos.y = intersection.t - hb.y - hb.h;
           if (sy < 0) pos.y = intersection.b - hb.y;

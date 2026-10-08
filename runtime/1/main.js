@@ -32,19 +32,26 @@ template.innerHTML = `
   import { createInputSystem } from "./systems/input.js";
   import { createCollisionSystem } from "./systems/collision.js";
   import { createCameraSystem } from "./systems/camera.js";
+  import {
+    combineMovementSources,
+  } from "./systems/combine.js";
 
   const SCALE = 1;
 
   async function createGame(canvas, options = {}) {
-    const { level, atlas: atlasImg, wizard: wizardImg, networkRoom } = options;
+    const {
+      ldtkData,
+      atlas: atlasImg,
+      wizard: wizardImg,
+      networkRoom,
+      level,
+    } = options;
 
     const SPEED = 75.0;
     const ANIM_FPS = 5;
-    const finalCtx = canvas.getContext("2d");
-    finalCtx.imageSmoothingEnabled = false;
 
     const [map, atlas, sprite] = await Promise.all([
-      loadMap(level),
+      loadMap(ldtkData, level),
       loadImage(atlasImg),
       loadSprite(wizardImg, WIZARD_CONFIG),
     ]);
@@ -60,7 +67,6 @@ template.innerHTML = `
     );
 
     const pixelCanvas = new OffscreenCanvas(canvasBg.width, canvasBg.height);
-    console.log(canvasBg.width, canvasBg.height);
     const ctx = pixelCanvas.getContext("2d");
     ctx.imageSmoothingEnabled = false;
 
@@ -73,16 +79,19 @@ template.innerHTML = `
       pos: map.playerStart,
       vel: { x: 0, y: 0 },
       facing: "right",
-      hitbox: { x: -5, y: -3, w: 10, h: 6 },
+      hitbox: { x: -8, y: -3, w: 16, h: 6 },
+      speed: SPEED,
     };
 
     const collisionGrid = buildCollisionGrid(map.layers, map.collision);
     const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
-    const inputSystem = createInputSystem(canvas, wizard, SPEED);
+    const inputSystem = createInputSystem(canvas);
     const collisionSystem = createCollisionSystem(wizard, collisionGrid);
-    const cameraSystem = createCameraSystem(pixelCanvas, canvas, {
-      x: map.playerStart.x + 2,
-      y: map.playerStart.y - 30,
+    const cameraSystem = createCameraSystem({worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes});
+
+    wizard.movementSource = combineMovementSources({
+      input: inputSystem.newMovementSource(),
+      cameraDrag: cameraSystem.newMovementSource()
     });
 
     var networkSystem;
@@ -128,7 +137,6 @@ template.innerHTML = `
       let delta = (timestamp - lastTimestamp) * 0.001;
 
       animationSystem.update(delta);
-      inputSystem.update();
       collisionSystem.update(delta);
       cameraSystem.update(delta);
 
@@ -146,8 +154,11 @@ template.innerHTML = `
       ySortDraw([...animationSystem.ySortItems(), ...ySortItems]);
       ctx.drawImage(canvasFg, 0, 0);
 
-      finalCtx.fillStyle = "#008df0";
-      finalCtx.fillRect(0, 0, canvas.width, canvas.height);
+      const tpos = cameraSystem.target();
+      if (tpos != null) {
+        ctx.fillStyle = "red";
+        ctx.fillRect(Math.round(tpos.x)-1, Math.round(tpos.y)-1, 3, 3);
+      }
 
       cameraSystem.draw();
     }
@@ -180,8 +191,8 @@ template.innerHTML = `
       }
 
       // Called by the page with the parsed json and img assets.
-      init({ level, atlas, wizard }) {
-        this._assets = { level, atlas, wizard };
+      init({ ldtkData, atlas, wizard }) {
+        this._assets = { ldtkData, atlas, wizard };
         if (this.isConnected) this._start();
       }
 
@@ -198,10 +209,19 @@ template.innerHTML = `
       _start() {
         if (this._starting) return;
         const canvas = this.shadowRoot.getElementById("c");
-        const networkRoom = this.dataset.networkRoom;
+
+        const fit = () => {
+          const dpr = window.devicePixelRatio ?? 1;
+          canvas.width = Math.round(canvas.clientWidth * dpr);
+          canvas.height = Math.round(canvas.clientHeight * dpr);
+          // imageSmoothingEnabled resets when the canvas is resized
+          canvas.getContext("2d").imageSmoothingEnabled = false;
+        };
+        fit();
+
         const starting = (this._starting = createGame(canvas, {
+          ...this.dataset,
           ...this._assets,
-          networkRoom,
         }));
         starting.then((game) => {
           if (this._starting !== starting) return;
@@ -209,14 +229,7 @@ template.innerHTML = `
           canvas.focus();
 
           const observer = new ResizeObserver(() => {
-            const dpr = window.devicePixelRatio ?? 1;
-            canvas.width = Math.round(canvas.clientWidth * dpr);
-            canvas.height = Math.round(canvas.clientHeight * dpr);
-
-            // imageSmoothingEnabled resets when the canvas is resized
-            const ctx = canvas.getContext("2d");
-            ctx.imageSmoothingEnabled = false;
-
+            fit();
             game.draw()
           });
 

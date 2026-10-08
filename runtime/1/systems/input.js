@@ -11,10 +11,12 @@ export function createInput(canvas) {
     }
   };
   const onKeyUp = (e) => keys.delete(e.key);
+  const onBlur = () => keys.clear();
 
   canvas.addEventListener("click",   onClick);
   canvas.addEventListener("keydown", onKeyDown);
   canvas.addEventListener("keyup",   onKeyUp);
+  canvas.addEventListener("blur",    onBlur);
 
   return {
     get left()  { return keys.has("ArrowLeft");  },
@@ -25,27 +27,30 @@ export function createInput(canvas) {
       canvas.removeEventListener("click",   onClick);
       canvas.removeEventListener("keydown", onKeyDown);
       canvas.removeEventListener("keyup",   onKeyUp);
+      canvas.removeEventListener("blur",    onBlur);
     },
   };
 }
 
-export function createInputSystem(canvas, entity, speed) {
-  const input = createInput(canvas)
-  return {
-    update() {
-      entity.vel.x = 0;
-      entity.vel.y = 0;
-      if (input.left)  { entity.vel.x = -speed; entity.facing = "left"; }
-      if (input.right) { entity.vel.x =  speed; entity.facing = "right"; }
-      if (input.up)    { entity.vel.y = -speed; }
-      if (input.down)  { entity.vel.y =  speed; }
-      if (entity.vel.x !== 0 && entity.vel.y !== 0) {
-        entity.vel.x *= 0.707;
-        entity.vel.y *= 0.707;
-      }
-    },
-    destroy() {
-      input.destroy()
-    }
+export function createInputSystem(canvas) {
+  const input = createInput(canvas);
+
+  // Unit-length direction from the arrow keys ({0, 0} when idle).
+  function newMovementSource() {
+    return {
+      get direction() {
+        const x = input.right ? 1 : input.left ? -1 : 0;
+        const y = input.down ? 1 : input.up ? -1 : 0;
+        if (x !== 0 && y !== 0) return { x: x * Math.SQRT1_2, y: y * Math.SQRT1_2 };
+        return { x, y };
+      },
+    };
   }
+
+  return {
+    newMovementSource,
+    destroy() {
+      input.destroy();
+    },
+  };
 }
