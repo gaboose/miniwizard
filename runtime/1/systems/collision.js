@@ -1,4 +1,6 @@
-export function createCollisionSystem(entity, grid) {
+// `passable(overlap)` may return true to ignore an overlap with a solid rect
+// (portals use it so they can sit inside walls).
+export function createCollisionSystem(entity, grid, { passable } = {}) {
   const { cellSize, width, height, solid, bottom } = grid;
 
 function overlapsSolid(grid, box) {
@@ -14,7 +16,7 @@ function overlapsSolid(grid, box) {
         const t = Math.max(box.t, s.y);
         const r = Math.min(box.r, s.x + s.w);
         const b = Math.min(box.b, s.y + s.h);
-        if (r > l && b > t) return { l, t, r, b };
+        if (r > l && b > t && !passable?.({ l, t, r, b })) return { l, t, r, b };
       }
     }
   }

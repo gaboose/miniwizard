@@ -33,6 +33,7 @@ template.innerHTML = `
   import { createCollisionSystem } from "./systems/collision.js";
   import { createCameraSystem } from "./systems/camera.js";
   import { createDebugSystem } from "./systems/debug.js";
+  import { createPortalSystem, loadPortals } from "./systems/portal.js";
   import {
     combineMovementSources,
   } from "./systems/combine.js";
@@ -87,7 +88,10 @@ template.innerHTML = `
     const collisionGrid = buildCollisionGrid(map.layers, map.collision);
     const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
     const inputSystem = createInputSystem(canvas);
-    const collisionSystem = createCollisionSystem(wizard, collisionGrid);
+    const portalSystem = createPortalSystem(loadPortals(map.layers));
+    const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
+      passable: portalSystem.passable,
+    });
     const cameraSystem = createCameraSystem({worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes});
     const debugSystem = createDebugSystem({
       canvas: pixelCanvas,
@@ -125,6 +129,7 @@ template.innerHTML = `
     asyncSetup()
 
     animationSystem.addCharacter(wizard, sprite);
+    portalSystem.addEntity(wizard);
 
     for (const k in map.animatedTiles) {
       const sprite = createSpriteFromTileIds(
@@ -143,6 +148,7 @@ template.innerHTML = `
 
       animationSystem.update(delta);
       collisionSystem.update(delta);
+      portalSystem.update(delta);
       cameraSystem.update(delta);
 
       if (networkSystem) {

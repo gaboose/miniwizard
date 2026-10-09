@@ -1,15 +1,28 @@
 export function createCharacterAnimator(entity, sprite) {
-  const getLabel = () => {
+  const getLabel = (facing) => {
     const dir = entity.movementSource.direction;
     const motion = dir.x != 0 || dir.y != 0 ? "walk" : "idle";
-    return motion + (entity.facing === "right" ? "R" : "L");
+    return motion + (facing === "right" ? "R" : "L");
   }
 
   return {
     ySortItem: (ctx, scale, frame) => {
+      // `entity.views` (set by e.g. the portal system) draws the character as
+      // several clipped copies instead of once at its position.
+      if (entity.views) {
+        return entity.views.map((v) => ({
+          sortY: v.y,
+          draw: () => {
+            ctx.save();
+            v.clip?.(ctx, scale);
+            sprite.draw(ctx, getLabel(v.facing), frame, v.x, v.y, scale);
+            ctx.restore();
+          },
+        }));
+      }
       return {
         sortY: entity.pos.y,
-        draw: () => sprite.draw(ctx,  getLabel(), frame, entity.pos.x, entity.pos.y, scale),
+        draw: () => sprite.draw(ctx,  getLabel(entity.facing), frame, entity.pos.x, entity.pos.y, scale),
       };
     }
   };
@@ -54,7 +67,7 @@ export function createAnimationSystem(ctx, fps, scale) {
       }
     },
     ySortItems: () => {
-      return animators.map((a) => {
+      return animators.flatMap((a) => {
         return a.ySortItem(ctx, scale, frame)
       })
     }
