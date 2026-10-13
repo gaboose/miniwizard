@@ -12,6 +12,14 @@
 // there and drawn, pixel column by pixel column, coming out of the exit.
 // Once the player's pivot (its feet) crosses the edge the player is moved to
 // the exit, and the part still behind is drawn at the entry the same way.
+//
+// Portals must be paired: A's Destination is B and B's is A. A portal that
+// isn't part of such a pair is reported and becomes a solid line.
+//
+// Collision (`blockers`, used with an entity's body box in collision.js):
+// the edge is solid from behind, so it can only be entered from the front,
+// and both ends of the edge are solid 0px points, so nothing can pass the
+// frame of the portal sticking out past its ends.
 
 const DIRS = {
     // inward normal: the direction you walk to go through that edge
@@ -56,6 +64,13 @@ export function loadPortals(layers) {
             console.warn("portal destination not found in this level:", p.id, p.destinationId);
         }
     }
+    // Only mutual pairs link; anything else is a solid line.
+    const paired = (p) => p.destination?.destination === p && p.destination !== p;
+    const unpaired = [...byIid.values()].filter((p) => !paired(p));
+    for (const p of unpaired) {
+        console.warn("portal is not paired with a portal that leads back to it; it is solid:", p.id);
+    }
+    for (const p of unpaired) p.destination = null;
     return [...byIid.values()];
 }
 
@@ -152,22 +167,44 @@ function clipFront(ctx, portal, scale) {
 
 // `reach` is how far (world px) a sprite extends from its pivot; within that
 // distance of an edge the sprite is split between the two portals.
-export function createPortalSystem(portals, { reach = 32, onTeleport } = {}) {
-    // Teleport links follow Destination. Drawing also uses the reverse
-    // direction, so the trailing half shows even for one-way portals.
-    const links = [];
-    const viewLinks = [];
+// The solid parts of portals, for collision.js.
+//   segments: { vertical, c, lo, hi, blocks } the edge line at x (vertical)
+//             or y = c, from lo to hi; `blocks` is the direction of motion
+//             (+1 / -1 along the crossing axis) it stops, 0 for both.
+//   points:   { x, y } the ends of every edge.
+function createBlockers(portals) {
+    const segments = [];
+    const points = [];
     for (const p of portals) {
-        if (!p.destination) continue;
-        const fwd = createLink(p, p.destination);
-        links.push(fwd);
-        viewLinks.push(fwd);
+        const vertical = p.n.x !== 0;
+        const { x, y, w, h } = p.rect;
+        const c = vertical ? p.center.x : p.center.y;
+        const [lo, hi] = vertical ? [y, y + h] : [x, x + w];
+        // Walking from behind to the front is moving against the inward normal.
+        const blocks = p.destination ? -(vertical ? p.n.x : p.n.y) : 0;
+        segments.push({ vertical, c, lo, hi, blocks });
+        if (vertical) points.push({ x: c, y: lo }, { x: c, y: hi });
+        else points.push({ x: lo, y: c }, { x: hi, y: c });
     }
-    for (const l of links) {
-        if (!viewLinks.some((v) => v.from === l.to)) viewLinks.push(createLink(l.to, l.from));
-    }
+    return { segments, points };
+}
 
-    const entities = new Map(); // entity -> { prev: {x, y} }
+export function createPortalSystem(portals, { reach = 32, onTeleport } = {}) {
+    // Portals are paired (see loadPortals), so every link has its reverse.
+    const links = portals.filter((p) => p.destination).map((p) => createLink(p, p.destination));
+    const blockers = createBlockers(portals);
+
+    // entity -> { teleport, side: Map(portal -> -1 front / 1 behind) }
+    // `side` is the side of each portal's edge the entity was last strictly
+    // on. Standing exactly on the line (e.g. stopped there from behind)
+    // keeps the old side, so only crossings that start in front teleport.
+    const entities = new Map();
+
+    function sides(entity) {
+        const side = new Map();
+        for (const link of links) side.set(link.from, local(link.from, entity.pos).depth > 0 ? 1 : -1);
+        return side;
+    }
 
     function teleport(entity, link) {
         const p = link.point(entity.pos);
@@ -179,10 +216,12 @@ export function createPortalSystem(portals, { reach = 32, onTeleport } = {}) {
     }
 
     // The sprite copies to draw for an entity: itself (clipped at the edge it
-    // is next to) and its continuation at the other portal.
-    function views(entity) {
+    // is next to) and its continuation at the other portal. Only from the
+    // front: on the line itself, `side` says which side it came from.
+    function views(entity, side) {
         const { pos, facing } = entity;
-        for (const link of viewLinks) {
+        for (const link of links) {
+            if (side.get(link.from) > 0) continue;
             const { depth, along } = local(link.from, pos);
             if (depth > 0 || depth <= -reach || !inSpan(link.from, along)) continue;
             const ghost = link.point(pos);
@@ -196,11 +235,12 @@ export function createPortalSystem(portals, { reach = 32, onTeleport } = {}) {
 
     return {
         portals,
+        blockers,
 
         // `teleport: false` for entities that only need the drawing (e.g.
         // remote players whose position comes from the network).
         addEntity(entity, { teleport = true } = {}) {
-            entities.set(entity, { teleport, prev: { ...entity.pos } });
+            entities.set(entity, { teleport, side: sides(entity) });
             return {
                 destroy() {
                     entities.delete(entity);
@@ -212,19 +252,21 @@ export function createPortalSystem(portals, { reach = 32, onTeleport } = {}) {
         // Run after movement/collision.
         update() {
             for (const [entity, state] of entities) {
-                if (state.teleport) {
-                    for (const link of links) {
-                        const before = local(link.from, state.prev).depth;
-                        const now = local(link.from, entity.pos);
-                        if (before <= 0 && now.depth > 0 && inSpan(link.from, now.along)) {
-                            teleport(entity, link);
-                            break;
-                        }
+                let teleported = false;
+                for (const link of links) {
+                    const now = local(link.from, entity.pos);
+                    if (now.depth === 0) continue;
+                    const before = state.side.get(link.from);
+                    state.side.set(link.from, now.depth > 0 ? 1 : -1);
+                    if (state.teleport && before < 0 && now.depth > 0 && inSpan(link.from, now.along)) {
+                        teleport(entity, link);
+                        teleported = true;
+                        break;
                     }
                 }
-                state.prev.x = entity.pos.x;
-                state.prev.y = entity.pos.y;
-                entity.views = views(entity);
+                // Everything moved; start the sides over from the exit.
+                if (teleported) state.side = sides(entity);
+                entity.views = views(entity, state.side);
             }
         },
 

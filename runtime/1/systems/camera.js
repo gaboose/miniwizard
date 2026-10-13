@@ -1,6 +1,5 @@
 // dt is expected in seconds.
 export function createCameraSystem({ worldCanvas, outCanvas, pos, boxes = [], handoffRate = 10 }) {
-    const wc = worldCanvas.getContext("2d");
     const cam = { x: pos.x, y: pos.y, zoom: 1.0 };
 
     const box = createGuideBox({ pos, boxes });

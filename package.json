@@ -2,7 +2,8 @@
   "name": "wizard",
   "scripts": {
     "dev": "vite",
-    "build": "./build.sh"
+    "build": "./build.sh",
+    "check": "node scripts/check-collision.mjs"
   },
   "devDependencies": {
     "vite": "^8.3.0",

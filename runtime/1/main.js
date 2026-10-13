@@ -82,6 +82,7 @@ template.innerHTML = `
       vel: { x: 0, y: 0 },
       facing: "right",
       hitbox: { x: -8, y: -3, w: 16, h: 3 },
+      bodyHitbox: { x: -8, y: -23, w: 16, h: 23 },
       speed: SPEED
     };
 
@@ -91,6 +92,7 @@ template.innerHTML = `
     const portalSystem = createPortalSystem(loadPortals(map.layers));
     const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
       passable: portalSystem.passable,
+      blockers: portalSystem.blockers,
     });
     const cameraSystem = createCameraSystem({worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes});
     const debugSystem = createDebugSystem({
