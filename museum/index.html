@@ -10,12 +10,12 @@
     background-color: #ffffff;
   }
 </style>
-<img id="atlas" src="../../tests/3/atlas.png" alt="" hidden />
-<img id="wizard" src="../../runtime/1/wizard.png" alt="" hidden />
+<img id="atlas" src="../tests/3/atlas.png" alt="" hidden />
+<img id="wizard" src="../runtime/1/wizard.png" alt="" hidden />
 <wizard-canvas data-level="Museum"></wizard-canvas>
 <script type="module">
-  import "../../runtime/1/main.js";
-  import ldtkData from "../../tests/3/ldtk.json" with { type: "json" };
+  import "../runtime/1/main.js";
+  import ldtkData from "../tests/3/ldtk.json" with { type: "json" };
   document.querySelector("wizard-canvas").init({
     ldtkData,
     atlas: document.getElementById("atlas"),

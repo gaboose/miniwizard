@@ -5,3 +5,5 @@ rm -rf dist
 for t in tests/*/; do
   PAGE="${t%/}" npx vite build
 done
+
+PAGE="museum" npx vite build
