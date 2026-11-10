@@ -16,13 +16,14 @@
 //
 // `passable(overlap)` may return true to ignore a wall solid (portals use it so
 // they can sit inside walls). `blockers` is { segments, points } of portal
-// geometry, see portal.js.
+// geometry, see portal.js. `extraSolids()` returns additional wall rects
+// {x, y, w, h} that may change every frame (doors).
 
 const EPS = 1e-6;
 const NUDGE = 1; // px tried sideways when blocked
 const STEP = 0.25; // max px per axis per sub-step
 
-export function createCollisionSystem(entity, grid, { passable, blockers } = {}) {
+export function createCollisionSystem(entity, grid, { passable, blockers, extraSolids } = {}) {
   const { cellSize: C, width, height, cells } = grid;
 
   const boxAt = (pos, hb) => {
@@ -65,33 +66,36 @@ export function createCollisionSystem(entity, grid, { passable, blockers } = {})
     const y1 = Math.min(height - 1, Math.floor((sb - EPS) / C));
 
     let allowed = d;
+    const consider = (s) => {
+      const [slo, shi, splo, sphi] =
+        axis === "x"
+          ? [s.x, s.x + s.w, s.y, s.y + s.h]
+          : [s.y, s.y + s.h, s.x, s.x + s.w];
+      if (Math.min(phi, sphi) - Math.max(plo, splo) <= EPS) return;
+      const next = limit(allowed, d, face, d > 0 ? slo : shi);
+      if (next === allowed) return;
+      if (passable) {
+        // The part of the solid the unblocked move would enter
+        const end = axis === "x"
+          ? { l: box.l + d, r: box.r + d, t: box.t, b: box.b }
+          : { l: box.l, r: box.r, t: box.t + d, b: box.b + d };
+        const overlap = {
+          l: Math.max(end.l, s.x),
+          t: Math.max(end.t, s.y),
+          r: Math.min(end.r, s.x + s.w),
+          b: Math.min(end.b, s.y + s.h),
+        };
+        if (passable(overlap)) return;
+      }
+      allowed = next;
+    };
     for (let gy = y0; gy <= y1; gy++) {
       for (let gx = x0; gx <= x1; gx++) {
-        for (const s of cells[gy * width + gx] ?? []) {
-          const [slo, shi, splo, sphi] =
-            axis === "x"
-              ? [s.x, s.x + s.w, s.y, s.y + s.h]
-              : [s.y, s.y + s.h, s.x, s.x + s.w];
-          if (Math.min(phi, sphi) - Math.max(plo, splo) <= EPS) continue;
-          const next = limit(allowed, d, face, d > 0 ? slo : shi);
-          if (next === allowed) continue;
-          if (passable) {
-            // The part of the solid the unblocked move would enter
-            const end = axis === "x"
-              ? { l: box.l + d, r: box.r + d, t: box.t, b: box.b }
-              : { l: box.l, r: box.r, t: box.t + d, b: box.b + d };
-            const overlap = {
-              l: Math.max(end.l, s.x),
-              t: Math.max(end.t, s.y),
-              r: Math.min(end.r, s.x + s.w),
-              b: Math.min(end.b, s.y + s.h),
-            };
-            if (passable(overlap)) continue;
-          }
-          allowed = next;
-        }
+        for (const s of cells[gy * width + gx] ?? []) consider(s);
       }
     }
+    // Dynamic solids (e.g. closed doors)
+    if (extraSolids) for (const s of extraSolids()) consider(s);
     return allowed;
   }
 

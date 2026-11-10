@@ -33,6 +33,7 @@ import { createInputSystem } from "./systems/input.js";
 import { createCollisionSystem } from "./systems/collision.js";
 import { createCameraSystem } from "./systems/camera.js";
 import { createDebugSystem } from "./systems/debug.js";
+import { createTriggerSystem } from "./systems/trigger.js";
 import { createPortalSystem, loadPortals } from "./systems/portal.js";
 import {
   combineMovementSources,
@@ -92,9 +93,13 @@ async function createGame(canvas, options = {}) {
   const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
   const inputSystem = createInputSystem(canvas);
   const portalSystem = createPortalSystem(loadPortals(map.layers));
+  const triggerSystem = createTriggerSystem(map.layers, {
+    player: wizard, ctx, atlas, scale: SCALE, collisionAtlas,
+  });
   const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
     passable: portalSystem.passable,
     blockers: portalSystem.blockers,
+    extraSolids: triggerSystem.solids,
   });
   const cameraSystem = createCameraSystem({ worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes });
   const debugSystem = createDebugSystem({
@@ -153,6 +158,7 @@ async function createGame(canvas, options = {}) {
     animationSystem.update(delta);
     collisionSystem.update(delta);
     portalSystem.update(delta);
+    triggerSystem.update(delta);
     cameraSystem.update(delta);
 
     if (networkSystem) {
@@ -166,7 +172,7 @@ async function createGame(canvas, options = {}) {
   function draw() {
     ctx.clearRect(0, 0, canvasBg.width, canvasBg.height);
     ctx.drawImage(canvasBg, 0, 0);
-    ySortDraw([...animationSystem.ySortItems(), ...ySortItems]);
+    ySortDraw([...animationSystem.ySortItems(), ...triggerSystem.ySortItems(), ...ySortItems]);
     ctx.drawImage(canvasFg, 0, 0);
 
     const tpos = cameraSystem.target();

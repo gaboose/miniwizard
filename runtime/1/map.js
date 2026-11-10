@@ -76,7 +76,7 @@ export async function loadMap(data, levelName) {
 
 // Solid rects (tile-local px) for each 16x16 cell of the collision atlas.
 // A pixel is solid when its alpha > 0. Cells are computed lazily and cached.
-function createAtlasCollision(img) {
+export function createAtlasCollision(img) {
   const canvas = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
