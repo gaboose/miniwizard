@@ -11,247 +11,249 @@ template.innerHTML = `
     "
   ></canvas>
 `;
-  
-  import {
-    loadMap,
-    buildStaticCanvases,
-    buildCollisionGrid,
-    getYSortTiles,
-    drawTile,
-    ySortDraw,
-  } from "./map.js";
 
-  import {
-    loadImage,
-    loadSprite,
-    createSpriteFromTileIds,
-    WIZARD_CONFIG,
-  } from "./sprite.js";
+import {
+  loadMap,
+  buildStaticCanvases,
+  buildCollisionGrid,
+  getYSortTiles,
+  drawTile,
+  ySortDraw,
+} from "./map.js";
 
-  import { createAnimationSystem } from "./systems/animation.js";
-  import { createInputSystem } from "./systems/input.js";
-  import { createCollisionSystem } from "./systems/collision.js";
-  import { createCameraSystem } from "./systems/camera.js";
-  import { createDebugSystem } from "./systems/debug.js";
-  import { createPortalSystem, loadPortals } from "./systems/portal.js";
-  import {
-    combineMovementSources,
-  } from "./systems/combine.js";
+import {
+  loadImage,
+  loadSprite,
+  createSpriteFromTileIds,
+  WIZARD_CONFIG,
+} from "./sprite.js";
 
-  const SCALE = 1;
+import { createAnimationSystem } from "./systems/animation.js";
+import { createInputSystem } from "./systems/input.js";
+import { createCollisionSystem } from "./systems/collision.js";
+import { createCameraSystem } from "./systems/camera.js";
+import { createDebugSystem } from "./systems/debug.js";
+import { createPortalSystem, loadPortals } from "./systems/portal.js";
+import {
+  combineMovementSources,
+} from "./systems/combine.js";
 
-  async function createGame(canvas, options = {}) {
-    const {
-      ldtkData,
-      atlas: atlasImg,
-      wizard: wizardImg,
-      networkRoom,
-      level,
-    } = options;
+const SCALE = 1;
 
-    const SPEED = 75.0;
-    const ANIM_FPS = 5;
+async function createGame(canvas, options = {}) {
+  const {
+    ldtkData,
+    atlas: atlasImg,
+    collisionAtlas: collisionImg,
+    wizard: wizardImg,
+    networkRoom,
+    level,
+  } = options;
 
-    const [map, atlas, sprite] = await Promise.all([
-      loadMap(ldtkData, level),
-      loadImage(atlasImg),
-      loadSprite(wizardImg, WIZARD_CONFIG),
-    ]);
+  const SPEED = 75.0;
+  const ANIM_FPS = 5;
 
-    const animatedTileIds = new Set(
-      Object.entries(map.animatedTiles).map(([k, v]) => v.tileIds[0]),
-    );
-    const [canvasBg, canvasFg] = buildStaticCanvases(
-      map.layers,
+  const [map, atlas, collisionAtlas, sprite] = await Promise.all([
+    loadMap(ldtkData, level),
+    loadImage(atlasImg),
+    collisionImg ? loadImage(collisionImg) : null,
+    loadSprite(wizardImg, WIZARD_CONFIG),
+  ]);
+
+  const animatedTileIds = new Set(
+    Object.entries(map.animatedTiles).map(([k, v]) => v.tileIds[0]),
+  );
+  const [canvasBg, canvasFg] = buildStaticCanvases(
+    map.layers,
+    atlas,
+    SCALE,
+    animatedTileIds,
+  );
+
+  const pixelCanvas = new OffscreenCanvas(canvasBg.width, canvasBg.height);
+  const ctx = pixelCanvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  const ySortItems = getYSortTiles(map.layers, map.tileHeights).map((t) => ({
+    sortY: t.sortY,
+    draw: () => drawTile(ctx, t, atlas, SCALE, animatedTileIds),
+  }));
+
+  const wizard = {
+    pos: map.playerStart,
+    vel: { x: 0, y: 0 },
+    facing: "right",
+    hitbox: { x: -8, y: -3, w: 16, h: 3 },
+    bodyHitbox: { x: -8, y: -23, w: 16, h: 23 },
+    speed: SPEED
+  };
+
+  const collisionGrid = buildCollisionGrid(map.layers, collisionAtlas);
+  const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
+  const inputSystem = createInputSystem(canvas);
+  const portalSystem = createPortalSystem(loadPortals(map.layers));
+  const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
+    passable: portalSystem.passable,
+    blockers: portalSystem.blockers,
+  });
+  const cameraSystem = createCameraSystem({ worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes });
+  const debugSystem = createDebugSystem({
+    canvas: pixelCanvas,
+    // collision: collisionGrid
+  });
+
+  wizard.movementSource = combineMovementSources({
+    input: inputSystem.newMovementSource(),
+    cameraDrag: cameraSystem.newMovementSource()
+  });
+
+  var networkSystem;
+  var wizardCh;
+  async function asyncSetup() {
+    if (networkRoom) {
+      const { createNetworkSystem, createRemoteCharacterEntity } = await import("./systems/network.js");
+      networkSystem = createNetworkSystem(networkRoom, {
+        onNewOwnedChannel(ch,) {
+          console.log("remote channel created", ch.id, ch);
+          createRemoteCharacterEntity(
+            ch, (state) => { return animationSystem.addCharacter(state, sprite) }
+          )
+        },
+      });
+
+      wizardCh = networkSystem.ownedChannel({
+        id: "p",
+        m: {
+          x: wizard.pos.x,
+          y: wizard.pos.y,
+        },
+      });
+    }
+  }
+  asyncSetup()
+
+  animationSystem.addCharacter(wizard, sprite);
+  portalSystem.addEntity(wizard);
+
+  for (const k in map.animatedTiles) {
+    const sprite = createSpriteFromTileIds(
       atlas,
-      SCALE,
-      animatedTileIds,
+      map.animatedTiles[k].tileIds,
     );
-
-    const pixelCanvas = new OffscreenCanvas(canvasBg.width, canvasBg.height);
-    const ctx = pixelCanvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-
-    const ySortItems = getYSortTiles(map.layers, map.tileHeights).map((t) => ({
-      sortY: t.sortY,
-      draw: () => drawTile(ctx, t, atlas, SCALE, animatedTileIds),
-    }));
-
-    const wizard = {
-      pos: map.playerStart,
-      vel: { x: 0, y: 0 },
-      facing: "right",
-      hitbox: { x: -8, y: -3, w: 16, h: 3 },
-      bodyHitbox: { x: -8, y: -23, w: 16, h: 23 },
-      speed: SPEED
-    };
-
-    const collisionGrid = buildCollisionGrid(map.layers, map.collision);
-    const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
-    const inputSystem = createInputSystem(canvas);
-    const portalSystem = createPortalSystem(loadPortals(map.layers));
-    const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
-      passable: portalSystem.passable,
-      blockers: portalSystem.blockers,
-    });
-    const cameraSystem = createCameraSystem({worldCanvas: pixelCanvas, outCanvas: canvas, pos: wizard.pos, boxes: map.cameraBoxes});
-    const debugSystem = createDebugSystem({
-      canvas: pixelCanvas,
-      // collision: collisionGrid
-    });
-
-    wizard.movementSource = combineMovementSources({
-      input: inputSystem.newMovementSource(),
-      cameraDrag: cameraSystem.newMovementSource()
-    });
-
-    var networkSystem;
-    var wizardCh;
-    async function asyncSetup() {
-        if (networkRoom) {
-            const { createNetworkSystem, createRemoteCharacterEntity } = await import("./systems/network.js");
-            networkSystem = createNetworkSystem(networkRoom, {
-                onNewOwnedChannel(ch,) {
-                    console.log("remote channel created", ch.id, ch);
-                    createRemoteCharacterEntity(
-                        ch, (state) => {return animationSystem.addCharacter(state, sprite)}
-                    )
-                },
-            });
-
-            wizardCh = networkSystem.ownedChannel({
-                id: "p",
-                m: {
-                    x: wizard.pos.x,
-                    y: wizard.pos.y,
-                },
-            });
-        }
+    for (const inst of map.animatedTiles[k].instances) {
+      animationSystem.addSprite(inst, sprite);
     }
-    asyncSetup()
-
-    animationSystem.addCharacter(wizard, sprite);
-    portalSystem.addEntity(wizard);
-
-    for (const k in map.animatedTiles) {
-      const sprite = createSpriteFromTileIds(
-        atlas,
-        map.animatedTiles[k].tileIds,
-      );
-      for (const inst of map.animatedTiles[k].instances) {
-        animationSystem.addSprite(inst, sprite);
-      }
-    }
-
-    let lastTimestamp = null;
-    function update(timestamp) {
-      if (lastTimestamp == null) lastTimestamp = timestamp;
-      let delta = (timestamp - lastTimestamp) * 0.001;
-
-      animationSystem.update(delta);
-      collisionSystem.update(delta);
-      portalSystem.update(delta);
-      cameraSystem.update(delta);
-
-      if (networkSystem) {
-          networkSystem.update();
-          wizardCh.send({ x: wizard.pos.x, y: wizard.pos.y });
-      }
-
-      lastTimestamp = timestamp;
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvasBg.width, canvasBg.height);
-      ctx.drawImage(canvasBg, 0, 0);
-      ySortDraw([...animationSystem.ySortItems(), ...ySortItems]);
-      ctx.drawImage(canvasFg, 0, 0);
-
-      const tpos = cameraSystem.target();
-      if (tpos != null) {
-        ctx.fillStyle = "red";
-        ctx.fillRect(Math.round(tpos.x)-1, Math.round(tpos.y)-1, 3, 3);
-      }
-
-      debugSystem.draw();
-      cameraSystem.draw();
-    }
-
-    let rafId;
-    function loop(timestamp) {
-      update(timestamp);
-      draw();
-      rafId = requestAnimationFrame(loop);
-    }
-
-    return {
-      start: loop,
-      stop() {
-        cancelAnimationFrame(rafId);
-        inputSystem.destroy();
-      },
-      draw,
-    };
   }
 
-  customElements.define(
-    "wizard-canvas",
-    class extends HTMLElement {
-      constructor() {
-        super();
-        this.attachShadow({ mode: "open" }).appendChild(
-          template.content.cloneNode(true),
-        );
-      }
+  let lastTimestamp = null;
+  function update(timestamp) {
+    if (lastTimestamp == null) lastTimestamp = timestamp;
+    let delta = (timestamp - lastTimestamp) * 0.001;
 
-      // Called by the page with the parsed json and img assets.
-      init({ ldtkData, atlas, wizard }) {
-        this._assets = { ldtkData, atlas, wizard };
-        if (this.isConnected) this._start();
-      }
+    animationSystem.update(delta);
+    collisionSystem.update(delta);
+    portalSystem.update(delta);
+    cameraSystem.update(delta);
 
-      connectedCallback() {
-        if (this._assets) this._start();
-      }
+    if (networkSystem) {
+      networkSystem.update();
+      wizardCh.send({ x: wizard.pos.x, y: wizard.pos.y });
+    }
 
-      disconnectedCallback() {
-        this._game?.stop();
-        this._observer?.disconnect();
-        this._game = this._observer = this._starting = null;
-      }
+    lastTimestamp = timestamp;
+  }
 
-      _start() {
-        if (this._starting) return;
-        const canvas = this.shadowRoot.getElementById("c");
+  function draw() {
+    ctx.clearRect(0, 0, canvasBg.width, canvasBg.height);
+    ctx.drawImage(canvasBg, 0, 0);
+    ySortDraw([...animationSystem.ySortItems(), ...ySortItems]);
+    ctx.drawImage(canvasFg, 0, 0);
 
-        const fit = () => {
-          const dpr = window.devicePixelRatio ?? 1;
-          canvas.width = Math.round(canvas.clientWidth * dpr);
-          canvas.height = Math.round(canvas.clientHeight * dpr);
-          // imageSmoothingEnabled resets when the canvas is resized
-          canvas.getContext("2d").imageSmoothingEnabled = false;
-        };
-        fit();
+    const tpos = cameraSystem.target();
+    if (tpos != null) {
+      ctx.fillStyle = "red";
+      ctx.fillRect(Math.round(tpos.x) - 1, Math.round(tpos.y) - 1, 3, 3);
+    }
 
-        const starting = (this._starting = createGame(canvas, {
-          ...this.dataset,
-          ...this._assets,
-        }));
-        starting.then((game) => {
-          if (this._starting !== starting) return;
-          this._game = game;
-          canvas.focus();
+    debugSystem.draw();
+    cameraSystem.draw();
+  }
 
-          const observer = new ResizeObserver(() => {
-            fit();
-            game.draw()
-          });
+  let rafId;
+  function loop(timestamp) {
+    update(timestamp);
+    draw();
+    rafId = requestAnimationFrame(loop);
+  }
 
-          observer.observe(canvas);
-          this._observer = observer;
-
-          requestAnimationFrame(game.start);
-        });
-      }
+  return {
+    start: loop,
+    stop() {
+      cancelAnimationFrame(rafId);
+      inputSystem.destroy();
     },
-  );
+    draw,
+  };
+}
+
+customElements.define(
+  "wizard-canvas",
+  class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: "open" }).appendChild(
+        template.content.cloneNode(true),
+      );
+    }
+
+    // Called by the page with the parsed json and img assets.
+    init({ ldtkData, atlas, collisionAtlas, wizard }) {
+      this._assets = { ldtkData, atlas, collisionAtlas, wizard };
+      if (this.isConnected) this._start();
+    }
+
+    connectedCallback() {
+      if (this._assets) this._start();
+    }
+
+    disconnectedCallback() {
+      this._game?.stop();
+      this._observer?.disconnect();
+      this._game = this._observer = this._starting = null;
+    }
+
+    _start() {
+      if (this._starting) return;
+      const canvas = this.shadowRoot.getElementById("c");
+
+      const fit = () => {
+        const dpr = window.devicePixelRatio ?? 1;
+        canvas.width = Math.round(canvas.clientWidth * dpr);
+        canvas.height = Math.round(canvas.clientHeight * dpr);
+        // imageSmoothingEnabled resets when the canvas is resized
+        canvas.getContext("2d").imageSmoothingEnabled = false;
+      };
+      fit();
+
+      const starting = (this._starting = createGame(canvas, {
+        ...this.dataset,
+        ...this._assets,
+      }));
+      starting.then((game) => {
+        if (this._starting !== starting) return;
+        this._game = game;
+        canvas.focus();
+
+        const observer = new ResizeObserver(() => {
+          fit();
+          game.draw()
+        });
+
+        observer.observe(canvas);
+        this._observer = observer;
+
+        requestAnimationFrame(game.start);
+      });
+    }
+  },
+);

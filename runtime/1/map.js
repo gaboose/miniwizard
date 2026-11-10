@@ -8,9 +8,7 @@ export async function loadMap(data, levelName) {
   // Height h means the tile's visual top is h tiles above its ground-plane base,
   // so its base row is at px[1] + 16 * (h + 1).
   const tileHeights = new Map();
-  var collision = new Map();
   for (const tileset of data.defs.tilesets) {
-    collision = new Map([...collision, ...parseCollisionRects(tileset)]);
     for (const tag of tileset.enumTags) {
         const h = tag.enumValueId === "Height2" ? 2 : tag.enumValueId === "Height1" ? 1 : 0;
         for (const id of tag.tileIds) tileHeights.set(id, h);
@@ -70,44 +68,52 @@ export async function loadMap(data, levelName) {
     bgColor: level.__bgColor,
     layers: level.layerInstances,
     tileHeights,
-    collision,
     playerStart,
     cameraBoxes,
     animatedTiles,
   };
 }
 
-// Parse "Collision x,y WxH x,y WxH ..." entries from a tileset's customData.
-function parseCollisionRects(tileset) {
-  const map = new Map(); // tileId -> [{ x, y, w, h }] in tile-local px
-  for (const { tileId, data } of tileset.customData ?? []) {
-    for (const line of data.split("\n")) {
-      const parts = line.trim().split(/\s+/);
-      if (parts[0] !== "Collision") continue;
-      const rects = [];
-      for (let i = 1; i + 1 < parts.length; i += 2) {
-        const [x, y] = parts[i].split(",").map(Number);
-        const [w, h] = parts[i + 1].split("x").map(Number);
-        rects.push({ x, y, w, h });
+// Solid rects (tile-local px) for each 16x16 cell of the collision atlas.
+// A pixel is solid when its alpha > 0. Cells are computed lazily and cached.
+function createAtlasCollision(img) {
+  const canvas = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const { data, width } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const cache = new Map();
+
+  return (sx, sy) => {
+    const key = sx + "," + sy;
+    let rects = cache.get(key);
+    if (rects) return rects;
+    rects = [];
+    let open = []; // rects still growing downward
+    for (let y = 0; y <= TILE_SIZE; y++) {
+      const runs = [];
+      if (y < TILE_SIZE) {
+        let start = -1;
+        for (let x = 0; x <= TILE_SIZE; x++) {
+          const solid = x < TILE_SIZE && data[((sy + y) * width + sx + x) * 4 + 3] > 0;
+          if (solid && start < 0) start = x;
+          else if (!solid && start >= 0) { runs.push([start, x - start]); start = -1; }
+        }
       }
-      if (rects.length) map.set(tileId, rects);
-    }
-  }
-  for (const tag of tileset.enumTags) {
-    if (tag.enumValueId === "Collision") {
-      for (const id of tag.tileIds) {
-        let rects = map.get(id) ?? [];
-        rects.push({x:0, y:0, w:16, h:16});
-        map.set(id, rects);
+      const next = [];
+      for (const r of open) {
+        const i = runs.findIndex(([x, w]) => x === r.x && w === r.w);
+        if (i >= 0) { r.h++; next.push(r); runs.splice(i, 1); }
+        else rects.push(r);
       }
+      for (const [x, w] of runs) next.push({ x, y, w, h: 1 });
+      open = next;
     }
-  }
-  return map;
+    cache.set(key, rects);
+    return rects;
+  };
 }
 
-const FULL_TILE = [{ x: 0, y: 0, w: 16, h: 16 }];
-
-export function buildCollisionGrid(layers, collisionRects = new Map()) {
+export function buildCollisionGrid(layers, collisionAtlas) {
   const CELL = 16;
   const ref = layers.find((l) => l.__gridSize === CELL);
   const width = ref.__cWid;
@@ -127,23 +133,13 @@ export function buildCollisionGrid(layers, collisionRects = new Map()) {
     }
   };
 
-  const tileLayerIds = ["BackgroundTiles", "YSort", "BackgroundAuto"];
-  for (const id of tileLayerIds) {
-    const layer = layers.find((l) => l.__identifier === id);
-    if (!layer) continue;
-    for (const tile of [...(layer.gridTiles ?? []), ...(layer.autoLayerTiles ?? [])]) {
-      // customData rects take priority over the full-tile Collision tag
-      const local = collisionRects.get(tile.t) ?? null;
-      if (!local) continue;
-      const flipX = tile.f & 1;
-      const flipY = tile.f & 2;
-      for (const r of local) {
-        addRect({
-          x: tile.px[0] + (flipX ? CELL - r.x - r.w : r.x),
-          y: tile.px[1] + (flipY ? CELL - r.y - r.h : r.y),
-          w: r.w,
-          h: r.h,
-        });
+  if (collisionAtlas) {
+    const rectsAt = createAtlasCollision(collisionAtlas);
+    for (const layer of layers) {
+      for (const tile of [...(layer.gridTiles ?? []), ...(layer.autoLayerTiles ?? [])]) {
+        for (const r of rectsAt(tile.src[0], tile.src[1])) {
+          addRect({ x: tile.px[0] + r.x, y: tile.px[1] + r.y, w: r.w, h: r.h });
+        }
       }
     }
   }
