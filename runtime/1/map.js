@@ -27,11 +27,13 @@ export async function loadMap(data, levelName) {
     .filter((e) => e.__identifier === "CameraArea")
     .map((e) => {
       const [pivotX, pivotY] = e.__pivot ?? [0, 0];
+      const priority = e.fieldInstances?.find((f) => f.__identifier === "Priority")?.__value ?? 0;
       return {
         x: e.px[0] - pivotX * e.width,
         y: e.px[1] - pivotY * e.height,
         width: e.width,
         height: e.height,
+        priority,
       };
     });
 

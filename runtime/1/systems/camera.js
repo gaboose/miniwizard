@@ -128,6 +128,7 @@ export function createCameraSystem({ worldCanvas, outCanvas, pos, boxes = [], ha
 function createGuideBox({ pos, boxes = [] }) {
     return {
         box() {
+            let best = null;
             for (const b of boxes) {
                 if (
                     pos.x > b.x &&
@@ -135,10 +136,10 @@ function createGuideBox({ pos, boxes = [] }) {
                     pos.y > b.y &&
                     pos.y < b.y + b.height
                 ) {
-                    return b;
+                    if (best === null || (b.priority ?? 0) > (best.priority ?? 0)) best = b;
                 }
             }
-            return null;
+            return best;
         },
     };
 }
