@@ -117,6 +117,36 @@ export function createAtlasCollision(img) {
   };
 }
 
+// Atlas-rect tiles (LDtk tile refs { x, y, w, h, tilesetUid }) used by
+// entities: drawing, y-sort height and collision, in one place.
+export function createTileSet({ tileHeights, tilesetCols }, { atlas, collisionAtlas }) {
+  const rectsAt = collisionAtlas ? createAtlasCollision(collisionAtlas) : () => [];
+  return {
+    // Draw `h` rows of `tile` starting `cy` px down it, at level px (dx, dy).
+    draw(ctx, tile, dx, dy, cy = 0, h = tile.h - cy) {
+      ctx.drawImage(atlas, tile.x, tile.y + cy, tile.w, h, dx, dy, tile.w, h);
+    },
+    // Height tag (0-2) of the 16px row `cy` px down `tile`.
+    heightAt(tile, cy = 0) {
+      const cols = tilesetCols?.get(tile.tilesetUid);
+      if (!cols) return 0;
+      return tileHeights?.get(((tile.y + cy) / TILE_SIZE) * cols + tile.x / TILE_SIZE) ?? 0;
+    },
+    // Solid rects in level px for `tile` placed at (dx, dy).
+    solids(tile, dx, dy) {
+      const out = [];
+      for (let cy = 0; cy < tile.h; cy += TILE_SIZE) {
+        for (let cx = 0; cx < tile.w; cx += TILE_SIZE) {
+          for (const r of rectsAt(tile.x + cx, tile.y + cy)) {
+            out.push({ x: dx + cx + r.x, y: dy + cy + r.y, w: r.w, h: r.h });
+          }
+        }
+      }
+      return out;
+    },
+  };
+}
+
 export function buildCollisionGrid(layers, collisionAtlas) {
   const CELL = 16;
   const ref = layers.find((l) => l.__gridSize === CELL);

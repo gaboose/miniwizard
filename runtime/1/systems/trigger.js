@@ -11,7 +11,6 @@
 // Door collision comes from the collision atlas, per 16x16 cell of each tile of
 // the current state, and is exposed as `solids()` for collision.js.
 
-import { createAtlasCollision } from "../map.js";
 import { field } from "../ldtk.js";
 
 const CELL = 16;
@@ -28,22 +27,10 @@ function layout(tiles) {
   return out;
 }
 
-export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisionAtlas, tileHeights, tilesetCols }) {
-  const entities = (layers ?? []).flatMap((l) => l.entityInstances ?? []);
-  const rectsAt = collisionAtlas ? createAtlasCollision(collisionAtlas) : () => [];
-
+// `entities`: flat LDtk entity instances. `tileSet`: see createTileSet in map.js.
+export function createTriggerSystem({ player, entities }, { ctx, tileSet }) {
   const solidsOf = (e, parts) =>
-    parts.flatMap(({ tile, x, y }) => {
-      const out = [];
-      for (let cy = 0; cy < tile.h; cy += CELL) {
-        for (let cx = 0; cx < tile.w; cx += CELL) {
-          for (const r of rectsAt(tile.x + cx, tile.y + cy)) {
-            out.push({ x: e.px[0] + x + cx + r.x, y: e.px[1] + y + cy + r.y, w: r.w, h: r.h });
-          }
-        }
-      }
-      return out;
-    });
+    parts.flatMap(({ tile, x, y }) => tileSet.solids(tile, e.px[0] + x, e.px[1] + y));
 
   const doors = new Map(
     entities
@@ -79,12 +66,7 @@ export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisi
     });
 
   function drawParts(e, parts) {
-    for (const { tile: t, x, y } of parts) {
-      ctx.drawImage(
-        atlas, t.x, t.y, t.w, t.h,
-        (e.px[0] + x) * scale, (e.px[1] + y) * scale, t.w * scale, t.h * scale,
-      );
-    }
+    for (const { tile, x, y } of parts) tileSet.draw(ctx, tile, e.px[0] + x, e.px[1] + y);
   }
 
   // Sort items for a door, one per 16px row of each tile so every row sorts
@@ -92,17 +74,11 @@ export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisi
   function doorItems(e, parts) {
     const items = [];
     for (const { tile: t, x, y } of parts) {
-      const cols = tilesetCols?.get(t.tilesetUid);
       for (let cy = 0; cy < t.h; cy += CELL) {
-        const id = cols ? ((t.y + cy) / CELL) * cols + t.x / CELL : -1;
-        const h = tileHeights?.get(id) ?? 0;
         const rowH = Math.min(CELL, t.h - cy);
         items.push({
-          sortY: e.px[1] + y + cy + CELL * h,
-          draw: () => ctx.drawImage(
-            atlas, t.x, t.y + cy, t.w, rowH,
-            (e.px[0] + x) * scale, (e.px[1] + y + cy) * scale, t.w * scale, rowH * scale,
-          ),
+          sortY: e.px[1] + y + cy + CELL * tileSet.heightAt(t, cy),
+          draw: () => tileSet.draw(ctx, t, e.px[0] + x, e.px[1] + y + cy, cy, rowH),
         });
       }
     }

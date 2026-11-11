@@ -18,6 +18,7 @@ import {
   buildCollisionGrid,
   getYSortTiles,
   drawTile,
+  createTileSet,
   ySortDraw,
 } from "./map.js";
 
@@ -60,6 +61,8 @@ async function createGame(canvas, options = {}) {
     collisionImg ? loadImage(collisionImg) : null,
     loadSprite(wizardImg, WIZARD_CONFIG),
   ]);
+  // The map and its images load in parallel, so the tile set is attached here.
+  map.tileSet = createTileSet(map, { atlas, collisionAtlas });
 
   const animatedTileIds = new Set(
     Object.entries(map.animatedTiles).map(([k, v]) => v.tileIds[0]),
@@ -93,10 +96,8 @@ async function createGame(canvas, options = {}) {
   const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
   const inputSystem = createInputSystem(canvas);
   const portalSystem = createPortalSystem(loadPortals(map.layers));
-  const triggerSystem = createTriggerSystem(map.layers, {
-    player: wizard, ctx, atlas, scale: SCALE, collisionAtlas,
-    tileHeights: map.tileHeights, tilesetCols: map.tilesetCols,
-  });
+  const entities = map.layers.flatMap((l) => l.entityInstances ?? []);
+  const triggerSystem = createTriggerSystem({ player: wizard, entities }, { ctx, tileSet: map.tileSet });
   const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
     passable: portalSystem.passable,
     blockers: portalSystem.blockers,
