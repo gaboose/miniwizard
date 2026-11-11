@@ -125,6 +125,7 @@ export function createRemoteCharacterEntity(ch, createCharComponent) {
         vel: { x: 0, y: 0 },
         facing: "right",
         hitbox: { x: -5, y: -3, w: 10, h: 6 },
+        movementSource: { direction: { x: 0, y: 0 } },
     };
 
     const char = createCharComponent(state)
@@ -133,6 +134,10 @@ export function createRemoteCharacterEntity(ch, createCharComponent) {
         state.vel.y = m.y - state.pos.y;
         if (state.vel.x > 0) state.facing = "right";
         else if (state.vel.x < 0) state.facing = "left";
+        state.movementSource.direction = {
+            x: Math.sign(state.vel.x),
+            y: Math.sign(state.vel.y),
+        };
         state.pos.x = m.x;
         state.pos.y = m.y;
     };
