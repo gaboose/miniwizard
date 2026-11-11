@@ -29,6 +29,7 @@ import {
   WIZARD_CONFIG,
 } from "./sprite.js";
 
+import { createWizard, withLocalControl, createRemoteWizard } from "./entities/wizard.js";
 import { createAnimationSystem } from "./systems/animation.js";
 import { createInputSystem } from "./systems/input.js";
 import { createCollisionSystem } from "./systems/collision.js";
@@ -83,14 +84,7 @@ async function createGame(canvas, options = {}) {
     draw: () => drawTile(ctx, t, atlas, SCALE, animatedTileIds),
   }));
 
-  const wizard = {
-    pos: map.playerStart,
-    vel: { x: 0, y: 0 },
-    facing: "right",
-    hitbox: { x: -8, y: -3, w: 16, h: 3 },
-    bodyHitbox: { x: -8, y: -23, w: 16, h: 23 },
-    speed: SPEED
-  };
+  const wizard = createWizard({ pos: map.playerStart });
 
   const collisionGrid = buildCollisionGrid(map.layers, collisionAtlas);
   const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
@@ -109,9 +103,12 @@ async function createGame(canvas, options = {}) {
     // collision: collisionGrid
   });
 
-  wizard.movementSource = combineMovementSources({
-    input: inputSystem.newMovementSource(),
-    cameraDrag: cameraSystem.newMovementSource()
+  withLocalControl(wizard, {
+    speed: SPEED,
+    movementSource: combineMovementSources({
+      input: inputSystem.newMovementSource(),
+      cameraDrag: cameraSystem.newMovementSource(),
+    }),
   });
 
   const remotePlayers = new Set();
@@ -119,19 +116,19 @@ async function createGame(canvas, options = {}) {
   var wizardCh;
   async function asyncSetup() {
     if (networkRoom) {
-      const { createNetworkSystem, createRemoteCharacterEntity } = await import("./systems/network.js");
+      const { createNetworkSystem } = await import("./systems/network.js");
       networkSystem = createNetworkSystem(networkRoom, {
         onNewOwnedChannel(ch,) {
           console.log("remote channel created", ch.id, ch);
           const portalHandle = { h: null };
-          const state = createRemoteCharacterEntity(
-            ch,
-            (state) => animationSystem.addCharacter(state, sprite),
-            (state) => {
+          const state = createRemoteWizard(ch, {
+            onDestroy: (state) => {
+              char.destroy();
               remotePlayers.delete(state);
               portalHandle.h?.destroy();
             },
-          );
+          });
+          const char = animationSystem.addCharacter(state, sprite);
           remotePlayers.add(state);
           // Drawing only: the remote client does its own teleporting.
           portalHandle.h = portalSystem.addEntity(state, { teleport: false });
