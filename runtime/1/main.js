@@ -95,6 +95,7 @@ async function createGame(canvas, options = {}) {
   const portalSystem = createPortalSystem(loadPortals(map.layers));
   const triggerSystem = createTriggerSystem(map.layers, {
     player: wizard, ctx, atlas, scale: SCALE, collisionAtlas,
+    tileHeights: map.tileHeights, tilesetCols: map.tilesetCols,
   });
   const collisionSystem = createCollisionSystem(wizard, collisionGrid, {
     passable: portalSystem.passable,
@@ -112,6 +113,7 @@ async function createGame(canvas, options = {}) {
     cameraDrag: cameraSystem.newMovementSource()
   });
 
+  const remotePlayers = new Set();
   var networkSystem;
   var wizardCh;
   async function asyncSetup() {
@@ -120,9 +122,18 @@ async function createGame(canvas, options = {}) {
       networkSystem = createNetworkSystem(networkRoom, {
         onNewOwnedChannel(ch,) {
           console.log("remote channel created", ch.id, ch);
-          createRemoteCharacterEntity(
-            ch, (state) => { return animationSystem.addCharacter(state, sprite) }
-          )
+          const portalHandle = { h: null };
+          const state = createRemoteCharacterEntity(
+            ch,
+            (state) => animationSystem.addCharacter(state, sprite),
+            (state) => {
+              remotePlayers.delete(state);
+              portalHandle.h?.destroy();
+            },
+          );
+          remotePlayers.add(state);
+          // Drawing only: the remote client does its own teleporting.
+          portalHandle.h = portalSystem.addEntity(state, { teleport: false });
         },
       });
 
@@ -158,7 +169,7 @@ async function createGame(canvas, options = {}) {
     animationSystem.update(delta);
     collisionSystem.update(delta);
     portalSystem.update(delta);
-    triggerSystem.update(delta);
+    triggerSystem.update(delta, remotePlayers);
     cameraSystem.update(delta);
 
     if (networkSystem) {

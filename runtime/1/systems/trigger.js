@@ -28,7 +28,7 @@ function layout(tiles) {
   return out;
 }
 
-export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisionAtlas }) {
+export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisionAtlas, tileHeights, tilesetCols }) {
   const entities = (layers ?? []).flatMap((l) => l.entityInstances ?? []);
   const rectsAt = collisionAtlas ? createAtlasCollision(collisionAtlas) : () => [];
 
@@ -87,15 +87,41 @@ export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisi
     }
   }
 
+  // Sort items for a door, one per 16px row of each tile so every row sorts
+  // by its own Height tag, like getYSortTiles does for ordinary tiles.
+  function doorItems(e, parts) {
+    const items = [];
+    for (const { tile: t, x, y } of parts) {
+      const cols = tilesetCols?.get(t.tilesetUid);
+      for (let cy = 0; cy < t.h; cy += CELL) {
+        const id = cols ? ((t.y + cy) / CELL) * cols + t.x / CELL : -1;
+        const h = tileHeights?.get(id) ?? 0;
+        const rowH = Math.min(CELL, t.h - cy);
+        items.push({
+          sortY: e.px[1] + y + cy + CELL * h,
+          draw: () => ctx.drawImage(
+            atlas, t.x, t.y + cy, t.w, rowH,
+            (e.px[0] + x) * scale, (e.px[1] + y + cy) * scale, t.w * scale, rowH * scale,
+          ),
+        });
+      }
+    }
+    return items;
+  }
+
   return {
-    update() {
-      const hb = player.hitbox;
-      const l = player.pos.x + hb.x, t = player.pos.y + hb.y;
-      const r = l + hb.w, b = t + hb.h;
+    // `others`: extra entities (remote players) that can press buttons too.
+    update(_delta, others = []) {
       for (const d of doors.values()) d.open = false;
       for (const btn of buttons) {
         const q = btn.rect;
-        btn.on = l < q.x + q.w && r > q.x && t < q.y + q.h && b > q.y;
+        btn.on = false;
+        for (const p of [player, ...others]) {
+          const hb = p.hitbox;
+          const l = p.pos.x + hb.x, t = p.pos.y + hb.y;
+          const r = l + hb.w, b = t + hb.h;
+          if (l < q.x + q.w && r > q.x && t < q.y + q.h && b > q.y) { btn.on = true; break; }
+        }
         if (btn.on) for (const d of btn.targets) d.open = true;
       }
     },
@@ -116,10 +142,7 @@ export function createTriggerSystem(layers, { player, ctx, atlas, scale, collisi
         });
       }
       for (const d of doors.values()) {
-        items.push({
-          sortY: d.e.px[1] + d.e.height,
-          draw: () => drawParts(d.e, d.open ? d.parts.open : d.parts.closed),
-        });
+        items.push(...doorItems(d.e, d.open ? d.parts.open : d.parts.closed));
       }
       return items;
     },

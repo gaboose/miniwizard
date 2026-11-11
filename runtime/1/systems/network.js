@@ -119,12 +119,12 @@ export function createNetworkSystem(roomName, { onNewOwnedChannel } = {}) {
     };
 }
 
-export function createRemoteCharacterEntity(ch, createCharComponent) {
+export function createRemoteCharacterEntity(ch, createCharComponent, onDestroy) {
     const state = {
         pos: { x: ch.lastMessage.x, y: ch.lastMessage.y },
         vel: { x: 0, y: 0 },
         facing: "right",
-        hitbox: { x: -5, y: -3, w: 10, h: 6 },
+        hitbox: { x: -8, y: -3, w: 16, h: 3 }, // same as the local wizard
         movementSource: { direction: { x: 0, y: 0 } },
     };
 
@@ -143,8 +143,9 @@ export function createRemoteCharacterEntity(ch, createCharComponent) {
     };
     ch.onClose = () => {
         char.destroy();
+        onDestroy?.(state);
         console.log("ch.onClose:", ch.id);
     };
 
-    return {}
+    return state;
 }

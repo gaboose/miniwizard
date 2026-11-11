@@ -15,6 +15,9 @@ export async function loadMap(data, levelName) {
     }
   }
 
+  // tileset uid -> tiles per row, to turn atlas x/y into a tile id.
+  const tilesetCols = new Map(data.defs.tilesets.map((t) => [t.uid, t.__cWid]));
+
   const playerEntity = level.layerInstances
   .flatMap(layer => layer.entityInstances)
   .find(e => e.__identifier === "Player");
@@ -68,6 +71,7 @@ export async function loadMap(data, levelName) {
     bgColor: level.__bgColor,
     layers: level.layerInstances,
     tileHeights,
+    tilesetCols,
     playerStart,
     cameraBoxes,
     animatedTiles,
