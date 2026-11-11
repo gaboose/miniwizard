@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const REF = /(["'])(\.\.?\/[^"']+)\1/g; // any quoted relative path
 
-export default function ldtkbuddy(cmd = ["go", "run", "github.com/gaboose/ldtkbuddy@060df94"]) {
+export default function ldtkbuddy(cmd = ["go", "run", "github.com/gaboose/ldtkbuddy@b88b51d"]) {
   let root, outRoot;
   const mirror = (file) => path.join(outRoot, path.relative(root, file));
   return {
