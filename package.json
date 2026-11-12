@@ -10,5 +10,8 @@
     "vite-plugin-singlefile": "^2.3.3"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "trystero": "^0.26.0"
+  }
 }

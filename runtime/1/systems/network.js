@@ -1,120 +1,63 @@
+import { joinRoom } from "trystero"
+
+const APP_ID = "gaboose.miniwizard"
+
 export function createNetworkSystem(roomName, { onNewOwnedChannel } = {}) {
-    // Classic worker (not a module): the worker pulls in Go's wasm_exec.js
-    // via importScripts, which module workers can't do.
-    const worker = new Worker(new URL("./network.worker.js", import.meta.url));
- 
-    // ---------- owned channels (page-side handles) ----------
-    // The worker holds the authoritative {id, header, lastMessage} so it can
-    // sync newcomers itself; these are just the objects handed to the app.
-    const ownedChannels = new Map();   // id -> channel handle
-    const remoteChannels = new Map();  // peerId -> Map(id -> remote channel)
- 
-    function onOwnedChannel(peerId, m) {
-        if (typeof m.id !== "string") return;
-        let byId = remoteChannels.get(peerId);
- 
-        if (m.close) {
-            // Channel closing.
-            const ch = byId?.get(m.id);
-            if (!ch) return;
-            byId.delete(m.id);
-            ch.onClose?.();
-            return;
+    const room = joinRoom({ appId: APP_ID }, roomName)
+
+    const remoteChannels = new Map() // peerId -> Map(id -> channel)
+    const myChannels = new Map()     // id -> channel
+
+    const control = room.makeAction("control")
+
+    function addRemote(peerId, id, m) {
+        let byId = remoteChannels.get(peerId)
+        if (!byId) remoteChannels.set(peerId, byId = new Map())
+        if (byId.has(id)) return
+        const action = room.makeAction(`ch ${id}`)
+        const ch = { peerId, id, lastMessage: m, onMessage: null, onClose: null }
+        action.onMessage = (msg, { peerId: from }) => {
+            if (from !== peerId) return
+            ch.lastMessage = msg
+            ch.onMessage?.(msg)
         }
- 
-        if (!byId) remoteChannels.set(peerId, byId = new Map());
-        let ch = byId.get(m.id);
-        if (!ch) {
-            // First message -> create channel.
-            ch = {
-                peerId,
-                id: m.id,
-                header: m.h,
-                lastMessage: m.m,
-                onMessage: null,
-                onClose: null,
-            };
-            console.log("new chan", ch, m);
-            byId.set(m.id, ch);
-            onNewOwnedChannel?.(ch);
-            return;
+        byId.set(id, ch)
+        onNewOwnedChannel?.(ch)
+    }
+
+    room.onPeerJoin = (peerId) => {
+        console.log(`Peer joined: ${peerId}`)
+        for (const ch of myChannels.values()) {
+            control.send({ t: "ch", id: ch.id, m: ch.lastMessage }, { target: peerId })
         }
- 
-        // Receiving a message on an existing channel.
-        ch.lastMessage = m.m;
-        if (m.m !== undefined) ch.onMessage?.(m.m);
     }
- 
-    function onMessage(peerId, m) {
-        console.log("application level message:", peerId, m);
+
+    room.onPeerLeave = (peerId) => {
+        const byId = remoteChannels.get(peerId)
+        remoteChannels.delete(peerId)
+        if (byId) for (const ch of byId.values()) ch.onClose?.()
+        console.log(`Peer left: ${peerId}`)
     }
- 
-    function onPeerDisconnect(peerId) {
-        console.log("peer disconnected:", peerId);
-        const byId = remoteChannels.get(peerId);
-        remoteChannels.delete(peerId);
-        if (byId) for (const ch of byId.values()) ch.onClose?.();
+
+    control.onMessage = (data, { peerId }) => {
+        if (data.t === "ch") addRemote(peerId, data.id, data.m)
     }
- 
-    // ---------- worker wiring ----------
-    let readyResolve;
-    const ready = new Promise((res) => { readyResolve = res; });
- 
-    worker.onmessage = (ev) => {
-        const msg = ev.data;
-        switch (msg.t) {
-            case "ready": readyResolve(); break;
-            case "fail": readyResolve(); break; // already logged in the worker; keep old behavior of returning the API anyway
-            case "oc": onOwnedChannel(msg.peerId, msg.m); break;
-            case "m": onMessage(msg.peerId, msg.m); break;
-            case "peer-disconnect": onPeerDisconnect(msg.peerId); break;
-        }
-    };
- 
-    addEventListener("pagehide", () => {
-        try { worker.postMessage({ t: "shutdown" }); } catch {}
-    });
- 
-    worker.postMessage({ t: "join", room: roomName });
- 
+
     return {
-        // Resolves once the netstack is up and the room is joined (or the
-        // worker reported failure). Awaiting it is optional: ownedChannel /
-        // send work immediately, because the worker records channel state
-        // right away and broadcasts it to peers once links come up.
-        ready,
-        update() {
-            
-        },
-        ownedChannel({ id, header, m }) {
-            console.log("creating owned channel:", id, header, m);
+        update() { },
+        ownedChannel({ id, m }) {
+            const action = room.makeAction(`ch ${id}`)
             const ch = {
                 id,
-                header,
                 lastMessage: m,
                 send(m) {
-                    ch.lastMessage = m;
-                    worker.postMessage({ t: "oc-send", id, m });
+                    ch.lastMessage = m
+                    action.send(m)
                 },
-                close() {
-                    if (ownedChannels.get(id) !== ch) return;
-                    ownedChannels.delete(id);
-                    worker.postMessage({ t: "oc-close", id });
-                },
-            };
-            ownedChannels.set(id, ch);
-            worker.postMessage({ t: "oc-create", id, h: header, m });
-            return ch;
+            }
+            myChannels.set(id, ch)
+            control.send({ t: "ch", id, m })
+            return ch
         },
-        sharedChannel({ id, onMessage, m }) {
-            // var lastMessage = m
-            // for (const l of links.values()) l.w.send({t: "sc", id, m});
-            // return {
-            //     send(m) {
-            //         lastMessage = m
-            //         for (const l of links.values()) l.w.send({t: "sc", id, m});
-            //     }
-            // }
-        },
-    };
+    }
 }

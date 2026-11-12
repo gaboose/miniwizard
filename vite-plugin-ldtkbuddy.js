@@ -12,13 +12,22 @@ const run = promisify(execFile);
 const REF = /(["'])(\.\.?\/[^"']+)\1/g; // any quoted relative path
 
 export default function ldtkbuddy(cmd = ["go", "run", "github.com/gaboose/ldtkbuddy@b88b51d"]) {
-  let root, outRoot;
+  let root, outRoot, serving;
   const mirror = (file) => path.join(outRoot, path.relative(root, file));
   return {
     name: "ldtkbuddy",
     configResolved(config) {
       root = config.root;
       outRoot = path.join(config.cacheDir, "ldtkbuddy");
+      serving = config.command === "serve";
+    },
+    // Dev only: after the HTML request regenerates the mirror, Vite serves the
+    // json import untransformed (raw JSON as a JS module), so convert it here.
+    enforce: "pre",
+    async load(id) {
+      const file = id.split("?")[0];
+      if (!serving || !file.endsWith(".json") || !file.startsWith(outRoot)) return;
+      return "export default " + (await fs.readFile(file, "utf8"));
     },
     transformIndexHtml: {
       order: "pre",
@@ -31,7 +40,7 @@ export default function ldtkbuddy(cmd = ["go", "run", "github.com/gaboose/ldtkbu
           await run(cmd[0], [...cmd.slice(1), "-o", path.dirname(mirror(file)), file]);
         }
         // Vite's dev server caches modules and doesn't watch cacheDir, so bust it.
-        const query = server ? `?${Date.now()}` : "";
+        const query = server ? `?t=${Date.now()}` : "";
         return html.replace(REF, (m, q, ref) => {
           const out = mirror(path.resolve(dir, ref));
           if (!existsSync(out)) return m;
