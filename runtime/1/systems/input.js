@@ -3,7 +3,7 @@ const ARROW_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 export function createInput(canvas) {
   const keys = new Set();
 
-  const onClick  = () => canvas.focus();
+  const onClick = () => canvas.focus();
   const onKeyDown = (e) => {
     if (ARROW_KEYS.includes(e.key)) {
       e.preventDefault();
@@ -13,21 +13,21 @@ export function createInput(canvas) {
   const onKeyUp = (e) => keys.delete(e.key);
   const onBlur = () => keys.clear();
 
-  canvas.addEventListener("click",   onClick);
+  canvas.addEventListener("click", onClick);
   canvas.addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("keyup",   onKeyUp);
-  canvas.addEventListener("blur",    onBlur);
+  canvas.addEventListener("keyup", onKeyUp);
+  canvas.addEventListener("blur", onBlur);
 
   return {
-    get left()  { return keys.has("ArrowLeft");  },
+    get left() { return keys.has("ArrowLeft"); },
     get right() { return keys.has("ArrowRight"); },
-    get up()    { return keys.has("ArrowUp");    },
-    get down()  { return keys.has("ArrowDown");  },
+    get up() { return keys.has("ArrowUp"); },
+    get down() { return keys.has("ArrowDown"); },
     destroy() {
-      canvas.removeEventListener("click",   onClick);
+      canvas.removeEventListener("click", onClick);
       canvas.removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("keyup",   onKeyUp);
-      canvas.removeEventListener("blur",    onBlur);
+      canvas.removeEventListener("keyup", onKeyUp);
+      canvas.removeEventListener("blur", onBlur);
     },
   };
 }
@@ -51,6 +51,29 @@ export function createInputSystem(canvas) {
     newMovementSource,
     destroy() {
       input.destroy();
+    },
+  };
+}
+
+export function createTVRemoteInputSystem(canvas) {
+  // Pressing 1-9 -> navigates to /tests/1-9/
+  // Pressing 0 -> navigates to /museum/
+  const onKeyDown = (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    let digit = null;
+    if (/^[0-9]$/.test(e.key)) digit = e.key;
+    else if (e.keyCode >= 48 && e.keyCode <= 57) digit = String(e.keyCode - 48);
+    else if (e.keyCode >= 96 && e.keyCode <= 105) digit = String(e.keyCode - 96); // numpad
+    if (digit === null) return;
+    e.preventDefault();
+    window.location.href = digit === "0" ? "/museum/" : `/tests/${digit}/`;
+  };
+
+  window.addEventListener("keydown", onKeyDown);
+
+  return {
+    destroy() {
+      window.removeEventListener("keydown", onKeyDown);
     },
   };
 }

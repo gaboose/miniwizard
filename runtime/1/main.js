@@ -31,7 +31,7 @@ import {
 
 import { createWizard, withLocalControl, createRemoteWizard } from "./entities/wizard.js";
 import { createAnimationSystem } from "./systems/animation.js";
-import { createInputSystem } from "./systems/input.js";
+import { createInputSystem, createTVRemoteInputSystem } from "./systems/input.js";
 import { createCollisionSystem } from "./systems/collision.js";
 import { createCameraSystem } from "./systems/camera.js";
 import { createDebugSystem } from "./systems/debug.js";
@@ -89,6 +89,7 @@ async function createGame(canvas, options = {}) {
   const collisionGrid = buildCollisionGrid(map.layers, collisionAtlas);
   const animationSystem = createAnimationSystem(ctx, ANIM_FPS, SCALE);
   const inputSystem = createInputSystem(canvas);
+  const _ = createTVRemoteInputSystem(canvas);
   const portalSystem = createPortalSystem(loadPortals(map.layers));
   const entities = map.layers.flatMap((l) => l.entityInstances ?? []);
   const triggerSystem = createTriggerSystem({ player: wizard, entities }, { ctx, tileSet: map.tileSet });
