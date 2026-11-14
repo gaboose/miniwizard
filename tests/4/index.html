@@ -11,6 +11,7 @@
   }
 </style>
 <img id="atlas" src="../3/atlas1.png" alt="" hidden />
+<img id="collision" src="../3/atlas2.png" alt="" hidden />
 <img id="wizard" src="../../runtime/1/wizard.png" alt="" hidden />
 <wizard-canvas data-level="Level_3"></wizard-canvas>
 <script type="module">
@@ -19,6 +20,7 @@
   document.querySelector("wizard-canvas").init({
     ldtkData,
     atlas: document.getElementById("atlas"),
+    collisionAtlas: document.getElementById("collision"),
     wizard: document.getElementById("wizard"),
   });
 </script>
